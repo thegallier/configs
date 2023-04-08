@@ -113,3 +113,57 @@ public class PalindromeChecker {
         System.out.println("Answer: " + isPalindrome);
     }
 }
+
+/===
+open assistant
+
+public class CheckPalindrome {
+    public static void main(String[] args) {
+        int num = 123;
+        
+        // Reverse the digits of the number and compare it with original number
+        int reverseNum = 0;
+        while (num > 0) {
+            int lastDigit = num % 10;
+            
+            reverseNum += lastDigit * pow(10, len - 1);
+            num /= 10;
+        }
+                
+        if (reverseNum == num) {
+            System.out.println("Number is a Palindrome");
+        } else {
+            System.out.println("Number is not a Palindrome");
+        }
+    }
+}
+
+no good
+
+import org.junit.*;
+
+public class CheckPalindromeTest {
+	@BeforeClass
+	public static void setup() {}
+    
+    @AfterClass
+    public static void tearDown(){}
+    
+    @Before
+    public void setUp(){}
+    
+    @After
+    public void TearDown(){}
+    
+	/** Test whether 123456789 is a palindrome */  
+	@Test
+	public void shouldReturnTrueFor123456789(){
+            Assert.assertEquals(true , new CheckPalindrome().isPalindrome(123));
+	} 
+	
+	/** Test whether 99 is a palindrome */ 
+	@Test
+	public void shouldReturnFalseFor99(){
+                Assert.assertEquals(false, new CheckPalindrome().isPalindrome(99));
+	} 
+}
