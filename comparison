@@ -303,4 +303,32 @@ trainer.train(resume_from_checkpoint=False)
 model.save_pretrained("lora-alpaca")
 
 /=====
+// First, create a wrapper function for your C code:
 
+#include <stdio.h>
+
+void c_code_wrapper(void *context, void (*callback)(void *context)) {
+    // Your C code here
+    callback(context);
+}
+
+// Then expose this wrapper as a Rust extern function:
+
+extern "C" fn c_code_wrapper(context: *mut c_void, callback: extern fn(*mut c_void)) {
+    unsafe {
+        c_code_wrapper(context, callback);
+    }
+}
+
+// Finally, call the wrapper from Rust using an async closure:
+
+let mut context = 0;
+let callback = |context: *mut c_void| {
+    // Your Rust code here
+};
+
+let future = async {
+    c_code_wrapper(&mut context, callback);
+};
+
+// The future will execute the C code asynchronously.
