@@ -332,3 +332,14 @@ let future = async {
 };
 
 // The future will execute the C code asynchronously.
+
+from bs4 import BeautifulSoup
+import requests
+
+r=requests.get("http://code.kx.com/q/ref")
+soup=BeautifulSoup(r.text,"html.parser")
+reflist=[x for x in soup.find_all('a') if str(x)[4:7] == "ref"]
+reflist2=[x for x in reflist if len(str(x).split('"'))>3]
+[{'link':(str(x)).split('"')[1],'descr':(str(x)).split('"')[3]} for x in reflist2[:-2]]
+reflist=[x for x in soup.find_all("div",{"class":"md-content"})]
+
