@@ -1,3 +1,114 @@
+results2=[]
+badresults2=[]
+for keyword in keywords:
+      print(keyword)
+      keyword2=keyword['link'].split("/")[0]
+      url2="https://code.kx.com/q/ref/"+keyword2
+      r=requests.get(url2)
+      soup=BeautifulSoup(r.text,"html.parser")
+      reflist=[x for x in soup.find_all("code",{"class":"language-syntax"})]
+      startline=(r.text).find('class="headerlink" href="#'+keyword2) 
+      if startline > 10:
+        try:
+          soup = BeautifulSoup(r.text[startline:-1], 'html.parser')
+
+          instruction = soup.select_one('code.language-syntax').get_text()
+          name = soup.select_one('p > em').get_text()
+          example = soup.select_one('pre.highlight > code.language-q').get_text()
+
+          def extract_key_and_value_from_li(li):
+              key = li.select_one('code').get_text()
+              value = li.text.replace(key, '').strip()
+              return key, value
+
+          where_items = soup.select('ul > li')
+
+          description = {}
+          for item in where_items:
+              if item.find('ul'):
+                  nested_list_items = item.select('ul > li')
+                  nested_dict = {}
+                  for nested_item in nested_list_items:
+                      key, value = extract_key_and_value_from_li(nested_item)
+                      nested_dict[key] = value
+                  key, value = extract_key_and_value_from_li(item)
+                  description[key] = {**nested_dict, **{'description': value}}
+              else:
+                  key, value = extract_key_and_value_from_li(item)
+                  description[key] = value
+
+          result_description_list = soup.select('ul > li')
+          result = {}
+          for result_item in result_description_list[-2:]:
+              key, value = extract_key_and_value_from_li(result_item)
+              result[key] = value
+
+          json_data = {
+              'instruction': instruction,
+              'name': name,
+              'example': example,
+              'description': description,
+              'result': result
+          }
+          soup = BeautifulSoup(r.text, 'lxml')
+
+          # Find all 'pre' elements with the 'highlight' class
+          pre_elements = soup.find_all('pre', class_='highlight')
+
+          # Extract the text from the found elements
+          texts = [pre_element.text for pre_element in pre_elements]
+
+          # Print the extracted texts
+          results2.append([keyword,json_data,texts])
+          print(keyword," good ")
+        except:
+          badresults2.append(keyword)
+          print(keyword," bad ")
+      else:
+        badresults2.append(keyword)
+        print(keyword," bad ")
+	/=====
+	
+soup = BeautifulSoup(r.text, 'lxml')
+
+# Find all 'pre' elements with the 'highlight' class
+pre_elements = soup.find_all('pre', class_='highlight')
+
+# Extract the text from the found elements
+texts = [pre_element.text for pre_element in pre_elements]
+
+# Print the extracted texts
+for text in texts:
+    print(text)
+
+/====
+
+	
+	
+x^y    ^[x;y]
+q)0^1 2 3 0N
+1 2 3 0
+q)100^1 2 -5 0N 10 0N
+1 2 -5 100 10 100
+q)1.0^1.2 -4.5 0n 0n 15
+1.2 -4.5 1 1 15
+q)`nobody^`tom`dick``harry
+`tom`dick`nobody`harry
+q)1 2 3 4 5^6 0N 8 9 0N
+6 2 8 9 5
+q)a:11.0 2.1 3.1 0n 4.5 0n
+q)type a
+9h
+q)10^a
+11 2.1 3.1 10 4.5 10
+q)type 10^a
+9h
+q)(`a`b`c!1 2 3)^`b`c!0N 30
+a| 1
+b| 2
+c| 30
+
+
 chatGpt4
 
 public class PalindromeChecker {
