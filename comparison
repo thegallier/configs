@@ -1,3 +1,360 @@
+import json
+import re
+
+input_text = """
+2.5 times ⇒ x*y
+Mutliply x and y.
+3*4
+12
+3*4 5 6
+12 15 18
+1 2 3*4 5 6
+4 10 18
+
+2.6 sqrt ⇒ %x
+Return the square root of x.
+%25
+5.000e+00
+%14.4
+3.794e+00
+
+2.7 div ⇒ x%y
+Divide x by y.
+12%5
+2.400e+00
+6%2
+3.000e+00
+"""
+
+# Split input_text into sections using two or more newline characters as the separator
+sections = re.split('\n{2,}', input_text.strip())
+
+output = []
+
+for section in sections:
+    # Extract section number, verb, usage, and description
+    match_header = re.match(r"(\d+\.\d+) (\w+) ⇒ (.*)\n(.*)", section)
+    if match_header:
+        section_number = match_header.group(1)
+        verb = match_header.group(2)
+        usage = match_header.group(3)
+        description = match_header.group(4)
+    
+        # Extract examples
+        match_examples = re.findall(r"((?:\d+|\%|\*|\s)+)\n((?:\d+|\.\d+|e\+\d+|\s)+)", section)
+        examples = [{'input': example[0], 'output': example[1]} for example in match_examples]
+
+        data = {
+            'section': section_number,
+            'verb': verb,
+            'usage': usage,
+            'description': description,
+            'examples': examples
+        }
+
+        output.append(data)
+
+json_output = json.dumps(output, indent=2)
+print(json_output)
+
+====section split
+import re
+
+# Multi-line string
+s = """2.5 times ⇒ x*y
+Mutliply x and y.
+
+ 3*4
+12
+
+3*4 5 6
+12 15 18
+
+1 2 3*4 5 6
+4 10 18
+2.6 sqrt ⇒ %x
+Return the square root of x.
+
+ %25
+5.000e+00
+ %14.4
+3.794e+00
+2.7 div ⇒ x%y
+Divide x by y.
+
+ 12%5
+2.400e+00
+
+6%2
+3.000e+00"""
+
+# Split the string into sections at double newlines
+sections = re.split(r'\n{2,}', s)
+
+# Iterate over the sections
+for section in sections:
+    # Split the section into lines
+    lines = section.split('\n')
+    
+    # Split the first line into its parts
+    first_line_parts = re.split(r'\s+|⇒', lines[0])
+    first_line_parts = [part.strip() for part in first_line_parts]
+    
+    print(first_line_parts)
+
+# This will output each first line as a list of its parts
+
+==q answer
+
+[
+  {
+    "question": "What is the sum of the first three numbers in the reversed list?",
+    "answer": "15",
+    "example": "_3|1 2 3 4 5"
+  },
+  {
+    "question": "What are the sorted unique elements of the two combined lists?",
+    "answer": "1 2 3 4 5 6",
+    "example": "^?1 2 3,4 4 5 6"
+  },
+  {
+    "question": "What is the remainder when the sum of the first three numbers is divided by the last number in the list?",
+    "answer": "2",
+    "example": "_3|1 2 3 4 5!5"
+  },
+  {
+    "question": "What are the first three elements of the sorted list?",
+    "answer": "1 2 3",
+    "example": "_3^5 1 3 2 4"
+  },
+  {
+    "question": "What is the first element of the list after removing the first three elements?",
+    "answer": "4",
+    "example": "__3_1 2 3 4 5"
+  },
+  {
+    "question": "What is the sum of the first two elements in the reversed list?",
+    "answer": "9",
+    "example": "+/_2|1 2 3 4 5"
+  },
+  {
+    "question": "What is the sum of the first two numbers in the sorted list?",
+    "answer": "3",
+    "example": "+/_2^5 1 3 2 4"
+  },
+  {
+    "question": "What is the maximum value in the reversed list?",
+    "answer": "5",
+    "example": "|/|1 2 3 4 5"
+  },
+  {
+    "question": "What is the sum of the first three elements in the list after removing the first two elements?",
+    "answer": "12",
+    "example": "+/_3_2_1 2 3 4 5"
+  },
+  {
+    "question": "What is the remainder when the sum of the first two numbers is divided by the last number in the reversed list?",
+    "answer": "0",
+    "example": "+/_2|1 2 3 4 5!5"
+  },
+  {
+    "question": "What is the sum of the first three numbers in the list after removing duplicates?",
+    "answer": "6",
+    "example": "+/_3?1 2 3 3 4 5"
+  },
+  {
+    "question": "What is the square root of the first number in the sorted list?",
+    "answer": "1",
+    "example": "%_*^5 1 3 2 4"
+  },
+  {
+    "question": "What is the sum of the first three numbers in the reversed list?",
+    "answer": "15",
+    "example": "+/_3|1 2 3 4 5"
+  },
+  {
+    "question": "What is the sum of the first two numbers in the list after removing the first three elements?",
+    "answer": "9",
+    "example": "+/_2_3_1 2 3 4 5"
+  },
+  {
+    "question": "What is
+
+===
+
+[
+  {
+    "question": "How to add two numbers in Shakti?",
+    "answer": "You can use the 'plus' verb for addition. For example, to add 3 and 7, you would use the command '3+7'.",
+    "example": "3+7"
+  },
+  {
+    "question": "How to subtract two numbers in Shakti?",
+    "answer": "You can use the 'minus' verb for subtraction. For example, to subtract 2 from 5, you would use the command '5-2'.",
+    "example": "5-2"
+  },
+  
+  ===
+  [{
+"question": "How do I calculate the average of a list of numbers in Shakti?",
+"answer": "You can calculate the average of a list of numbers by summing up the numbers using the '+' operator and then dividing by the count of the numbers using the '%' operator.",
+"example": "list: 1 2 3 4 5;\navg: (+/list) % #list;"
+},
+{
+"question": "How do I find the maximum value in a list of numbers in Shakti?",
+"answer": "You can find the maximum value in a list of numbers using the 'max' function.",
+"example": "list: 1 2 3 4 5;\nmaxValue: max list;"
+},
+{
+"question": "How do I create a list of even numbers up to a given number in Shakti?",
+"answer": "You can create a list of even numbers up to a given number by using the 'til' function to create a list from 0 to the number and the 'mod' function with an argument of 2 to check for even numbers.",
+"example": "number: 10;\nevenNumbers: 2 * til number % 2;"
+},
+{
+"question": "How do I find the maximum value in a list of numbers in Shakti?",
+"answer": "You can find the maximum value in a list of numbers using the 'max' function.",
+"example": "list: 1 2 3 4 5;\nmaxValue: max list;"
+},
+{
+"question": "How do I calculate the sum of the squares of a list of numbers in Shakti?",
+"answer": "You can calculate the sum of the squares of a list of numbers by squaring the numbers using the 'sqr' function and then summing up the squares using the '+' operator.",
+"example": "list: 1 2 3 4 5;\nsumSquares: +/ sqr list;"
+},
+{
+"question": "How do I filter out numbers less than a certain value from a list of numbers in Shakti?",
+"answer": "You can filter out numbers less than a certain value from a list of numbers by using the 'where' function with a comparison function.",
+"example": "list: 1 2 3 4 5;\nvalue: 3;\nfiltered: list where list > value;"
+},
+{
+"question": "How do I count the number of occurrences of a certain value in a list in Shakti?",
+"answer": "You can count the number of occurrences of a certain value in a list by using the 'count' function with a comparison function.",
+"example": "list: 1 2 3 4 5;\nvalue: 3;\ncount: count list where list = value;"
+},
+
+////
+
+import json
+from random import choice
+
+# Definitions of Shakti operations
+shakti_definitions = {
+    '+': 'addition',
+    '-': 'subtraction',
+    '*': 'multiplication',
+    '%': 'division',
+    'til': 'sequence generation',
+    'max': 'maximum',
+    'min': 'minimum',
+    'avg': 'average',
+    'count': 'count',
+    'where': 'filter'
+}
+
+# List of sample data and functions
+sample_data = ['list: 1 2 3 4 5', 'number: 10', 'value: 3']
+sample_functions = ['avg: (+/list) % #list', 'evenNumbers: 2 * til number % 2', 
+                    'maxValue: max list', 'maxIndex: list ? max list', 
+                    'stringList: string list', 'sumSquares: +/ sqr list', 
+                    'filtered: list where list > value', 
+                    'count: count list where list = value']
+
+# Function to generate question, answer, example tuple
+def generate_tuple():
+    op = choice(list(shakti_definitions.keys()))
+    data = choice(sample_data)
+    func = choice(sample_functions)
+
+    question = f"How do I perform {shakti_definitions[op]} in Shakti?"
+    answer = f"You can perform {shakti_definitions[op]} by using the '{op}' operation."
+    example = f"{data};\n{func};"
+
+    return {"question": question, "answer": answer, "example": example}
+
+# Function to generate a number of tuples
+def generate_tuples(n):
+    return [generate_tuple() for _ in range(n)]
+
+# Generate 5 tuples as an example
+tuples = generate_tuples(5)
+
+# Convert to JSON
+json_output = json.dumps(tuples, indent=4)
+
+# Print the JSON
+print(json_output)
+
+/===
+
+import numpy as np
+import pandas as pd
+
+shakti_to_python = {
+    '+': {
+        'desc': 'addition',
+        'python': 'np.add(a, b)',
+    },
+    '-': {
+        'desc': 'subtraction',
+        'python': 'np.subtract(a, b)',
+    },
+    '*': {
+        'desc': 'multiplication',
+        'python': 'np.multiply(a, b)',
+    },
+    '%': {
+        'desc': 'division',
+        'python': 'np.divide(a, b)',
+    },
+    'til': {
+        'desc': 'sequence generation',
+        'python': 'np.arange(n)',
+    },
+    'max': {
+        'desc': 'maximum',
+        'python': 'np.max(a)',
+    },
+    'min': {
+        'desc': 'minimum',
+        'python': 'np.min(a)',
+    },
+    'avg': {
+        'desc': 'average',
+        'python': 'np.mean(a)',
+    },
+    'count': {
+        'desc': 'count',
+        'python': 'len(a)',
+    },
+    'where': {
+        'desc': 'filter',
+        'python': 'a[a > n]',
+    }
+}
+
+/====
+Disclaimer1
+
+Creating a comprehensive mapping between Shakti operations and Python code would involve systematically associating each Shakti operation with an equivalent Python function, likely from libraries such as NumPy and Pandas.
+
+However, please note that Shakti is designed as a high-performance, array-based language that can handle complex data operations in a minimalistic way. Therefore, translating Shakti operations into Python code may result in more verbose and complex Python scripts, as Python is a general-purpose language with a different design philosophy.
+
+Here are some basic examples of Shakti operations and their Python equivalents, using NumPy and Pandas:
+
+
+
+Disclaimer2
+
+This dictionary provides a basic translation of some Shakti operations into Python code using NumPy. Note that the Python code is represented as strings, so you would need to use eval() or similar methods to execute this code, which can be dangerous and is generally not recommended. Also, the Python code assumes that the variables (a, b, n) are already defined.
+
+Keep in mind that this is a simplified representation, and it doesn't cover all Shakti operations, especially more complex ones. Creating a comprehensive mapping would require a deep understanding of both Shakti and Python, and it would be a significant undertaking.
+
+
+
+
+
+
+
+=/
 
 results2=[]
 badresults2=[]
