@@ -1,3 +1,13 @@
+{
+  "question": "What is the Shakti programming language?",
+  "answer": "Shakti, also known as k9, is a programming language developed by Arthur Whitney and the team at Shakti. The language comes from a lineage of similar languages going back to APL. It's known for its terse syntax and high-speed data processing and analysis capabilities.",
+  "example": {
+    "input": "{x@(!#x)+\!#y}",
+    "output": "This is an example of a Shakti (k9) code snippet. The actual output would depend on the context and the specific values of 'x' and 'y'."
+  }
+}
+
+
 import json
 import re
 
