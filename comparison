@@ -1,3 +1,134 @@
+import os
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = "HUGGINGFACEHUB_API_TOKEN"
+
+# Document Loader
+from langchain.document_loaders import TextLoader
+loader = TextLoader('./state_of_the_union.txt')
+documents = loader.load()
+
+import textwrap
+
+def wrap_text_preserve_newlines(text, width=110):
+    # Split the input text into lines based on newline characters
+    lines = text.split('\n')
+
+    # Wrap each line individually
+    wrapped_lines = [textwrap.fill(line, width=width) for line in lines]
+
+    # Join the wrapped lines back together using newline characters
+    wrapped_text = '\n'.join(wrapped_lines)
+
+    return wrapped_text
+    
+from langchain.text_splitter import CharacterTextSplitter
+text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+docs = text_splitter.split_documents(documents)
+
+from langchain.embeddings import HuggingFaceEmbeddings
+
+embeddings = HuggingFaceEmbeddings()
+
+!pip install faiss-cpu
+
+from langchain.vectorstores import FAISS
+
+db = FAISS.from_documents(docs, embeddings)
+
+
+query = "What did the president say about the Supreme Court"
+docs = db.similarity_search(query)
+
+from langchain.chains.question_answering import load_qa_chain
+from langchain import HuggingFaceHub
+
+
+llm=HuggingFaceHub(repo_id="google/flan-t5-xl", model_kwargs={"temperature":0, "max_length":512})
+
+chain = load_qa_chain(llm, chain_type="stuff")
+
+query = "What did the president say about the Supreme Court"
+docs = db.similarity_search(query)
+chain.run(input_documents=docs, question=query)
+
+from langchain.document_loaders import UnstructuredPDFLoader
+from langchain.indexes import VectorstoreIndexCreator
+
+loaders = [UnstructuredPDFLoader(os.path.join(pdf_folder_path, fn)) for fn in os.listdir(pdf_folder_path)]
+loaders
+
+index = VectorstoreIndexCreator(
+    embedding=HuggingFaceEmbeddings(),
+    text_splitter=CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)).from_loaders(loaders)
+
+//change
+
+from langchain.chains import RetrievalQA
+chain = RetrievalQA.from_chain_type(llm=llm, 
+                                    chain_type="stuff", 
+                                    retriever=index.vectorstore.as_retriever(), 
+                                    input_key="question")
+				    
+llm=HuggingFaceHub(repo_id="google/flan-t5-xl", model_kwargs={"temperature":0, "max_length":512})
+
+
+---q&a
+
+import re
+import json
+
+def parse_verbs(verbs, text):
+    result = []
+    for verb in verbs:
+        verb_info = {}
+        verb_info['verb'] = verb
+        
+        # Extract verb definition
+        verb_defn = re.findall(rf"{verb} ⇒ ([^\n]+)", text)
+        if verb_defn:
+            verb_info['definition'] = verb_defn[0]
+        
+        # Extract verb explanation and examples
+        verb_explanation = re.search(rf"{verb} ⇒ [^\n]+\n([^\n]+)\n([^2]+)", text, re.DOTALL)
+        if verb_explanation:
+            verb_info['explanation'] = verb_explanation.group(1).strip()
+            verb_info['examples'] = verb_explanation.group(2).strip().split('\n')
+        
+        result.append(verb_info)
+    
+    return result
+
+# Test the function
+verbs = ['plus', 'negate', 'minus', 'first', 'times', 'sqrt', 'div', 'mod', 'where', 'flip', 'and', 'reverse', 'or', 'asc(desc)', 'less (more)', 'freq', 'equal', 'not', 'match', 'enlist', 'cat', 'sort', '[f]cut', 'count', '[f]take', 'floor', '[f]drop', 'str', 'parse', 'unique', 'find', 'type', '[f]at', 'value', 'dict']
+text = """
+2.1 plus ⇒ x+y
+Add x and y. Arguments can be elements or lists but if both x and y are lists then they must be of equal length.
+
+----
+
+{
+        "verb": "plus",
+        "definition": "x+y",
+        "explanation": "Add x and y. Arguments can be elements or lists but if both x and y are lists then they must be of equal length.",
+        "examples": [
+            "3+7",
+            "10",
+            "",
+            "a:3;",
+            " a+8",
+            "11",
+            "",
+            " 3+4 5 6 7",
+            "7 8 9 10",
+            "",
+            "3 4 5+4 5 6",
+            "7 9 11",
+            "",
+            " 3 4+1"
+        ]
+    },
+    
+
+////
 {
   "question": "What is the Shakti programming language?",
   "answer": "Shakti, also known as k9, is a programming language developed by Arthur Whitney and the team at Shakti. The language comes from a lineage of similar languages going back to APL. It's known for its terse syntax and high-speed data processing and analysis capabilities.",
