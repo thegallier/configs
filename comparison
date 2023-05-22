@@ -1,3 +1,6 @@
+The paper titled “Reprompting: Automated Chain-of-Thought Prompt Inference Through Gibbs Sampling” introduces Reprompting, an iterative sampling algorithm that searches for the Chain-of-Thought (CoT) recipes for a given task without human intervention. Through Gibbs sampling, the authors infer CoT recipes that work consistently well for a set of training samples. Their method iteratively samples new recipes using previously sampled solutions as parent prompts to solve other training problems1.
+
+
 ////
 
 import os
