@@ -1,9 +1,30 @@
 The paper "Gorilla: Large Language Model Connected with Massive APIs" introduces Gorilla, a fine-tuned Large Language Model (LLM) that outperforms GPT-4 in writing API calls. The authors address the challenges faced by LLMs in effectively using tools via API calls, such as generating accurate input arguments and avoiding hallucination of incorrect API usage. Gorilla, when combined with a document retriever, adapts to document changes at test-time, mitigates hallucination issues, and keeps up with frequently updated documentation. The model's effectiveness is evaluated using APIBench, a dataset of HuggingFace, TorchHub, and TensorHub APIs, demonstrating increased reliability and applicability of LLM outputs. The Gorilla model and related resources are available at https://gorilla.cs.berkeley.edu.
 
 
-
+The paper "QLoRA: Efficient Finetuning of Quantized LLMs" presents QLoRA, a method for efficient finetuning of Large Language Models (LLMs) that enables finetuning a 65B parameter model on a single 48GB GPU. QLoRA introduces innovations like a new data type, 4-bit NormalFloat (NF4), double quantization, and paged optimizers to save memory without compromising performance. The authors' model family, Guanaco, outperforms all previous models on the Vicuna benchmark, achieving near ChatGPT performance with significantly less finetuning time. The paper provides a detailed analysis of instruction following and chatbot performance across multiple datasets and model scales, demonstrating that QLoRA finetuning on a small high-quality dataset leads to state-of-the-art results. The authors also critique current chatbot benchmarks and release all models and code, including CUDA kernels for 4-bit training.
+https://arxiv.org/abs/2305.14314
 
 The paper titled “Reprompting: Automated Chain-of-Thought Prompt Inference Through Gibbs Sampling” introduces Reprompting, an iterative sampling algorithm that searches for the Chain-of-Thought (CoT) recipes for a given task without human intervention. Through Gibbs sampling, the authors infer CoT recipes that work consistently well for a set of training samples. Their method iteratively samples new recipes using previously sampled solutions as parent prompts to solve other training problems1.
+
+models vicuna 13b with mpt
+Falcon-40B, developed by TII, is a 40B parameter causal decoder-only model trained on 1,000B tokens of RefinedWeb enhanced with curated corpora. It outperforms other open-source models like LLaMA, StableLM, RedPajama, and MPT, making it the best open-source model currently available. Falcon-40B features an architecture optimized for inference, with FlashAttention and multiquery. It is available under a license allowing commercial use. However, it is a raw, pretrained model and should be further finetuned for most use cases. The model is trained mostly on English, German, Spanish, French, with limited capabilities in Italian, Portuguese, Polish, Dutch, Romanian, Czech, and Swedish. It is recommended to finetune Falcon-40B for specific tasks and to take appropriate precautions for any production use.
+https://huggingface.co/tiiuae/falcon-40b
+
+optimizer
+
+https://arxiv.org/pdf/2305.14342.pdf
+The paper "Sophia: A Scalable Stochastic Second-order Optimizer for Language Model Pre-training" by Hong Liu, Zhiyuan Li, David Hall, Percy Liang, and Tengyu Ma introduces Sophia, a scalable second-order optimizer designed to improve the efficiency of language model pre-training. Sophia uses a lightweight estimate of the diagonal Hessian as the pre-conditioner and employs element-wise clipping to control the worst-case update size, mitigating the negative impact of non-convexity and rapid Hessian changes. The optimizer estimates the diagonal Hessian only every few iterations, minimizing time and memory overhead. In tests with GPT-2 models of various sizes, Sophia achieved a 2x speed-up compared to Adam in terms of the number of steps, total compute, and wall-clock time. The authors provide theoretical evidence that Sophia adapts to the curvature in different components of the parameters, which can be highly heterogeneous for language modeling tasks.
+
+alibi
+
+
+The video discusses the release of MPT-7B, the MosaicML Pretrained Transformer, a new family of open-source large language models (LLMs) that are commercially usable. The video provides general information about the model and compares it to the well-known LLaMA model from Meta AI. The second half of the video is dedicated to explaining ALiBi, a relative positional method used in MPT instead of the commonly used absolute positional embeddings. The video is structured into chapters, starting with an introduction to MPT-7B, followed by detailed information about the model, a discussion on finetuned MPT models, and finally an explanation of ALiBi.
+https://www.youtube.com/watch?v=rb02ZnkcW4Y
+
+The paper "Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation" by Ofir Press, Noah A. Smith, and Mike Lewis explores how transformer models can extrapolate at inference time for sequences longer than those seen during training. The authors introduce a new and more efficient position method, Attention with Linear Biases (ALiBi), which biases query-key attention scores with a penalty proportional to their distance, rather than adding positional embeddings to word embeddings. They demonstrate that ALiBi can train a 1.3 billion parameter model on input sequences of length 1024 that extrapolates to input sequences of length 2048, achieving the same perplexity as a sinusoidal position embedding model trained on inputs of length 2048 but training 11% faster and using 11% less memory. ALiBi's recency bias also leads it to outperform multiple strong position methods on the WikiText-103 benchmark.
+https://arxiv.org/pdf/2108.12409v2.pdf
+
+
 
 
 ////
