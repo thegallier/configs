@@ -1,3 +1,8 @@
+The paper "Gorilla: Large Language Model Connected with Massive APIs" introduces Gorilla, a fine-tuned Large Language Model (LLM) that outperforms GPT-4 in writing API calls. The authors address the challenges faced by LLMs in effectively using tools via API calls, such as generating accurate input arguments and avoiding hallucination of incorrect API usage. Gorilla, when combined with a document retriever, adapts to document changes at test-time, mitigates hallucination issues, and keeps up with frequently updated documentation. The model's effectiveness is evaluated using APIBench, a dataset of HuggingFace, TorchHub, and TensorHub APIs, demonstrating increased reliability and applicability of LLM outputs. The Gorilla model and related resources are available at https://gorilla.cs.berkeley.edu.
+
+
+
+
 The paper titled “Reprompting: Automated Chain-of-Thought Prompt Inference Through Gibbs Sampling” introduces Reprompting, an iterative sampling algorithm that searches for the Chain-of-Thought (CoT) recipes for a given task without human intervention. Through Gibbs sampling, the authors infer CoT recipes that work consistently well for a set of training samples. Their method iteratively samples new recipes using previously sampled solutions as parent prompts to solve other training problems1.
 
 
