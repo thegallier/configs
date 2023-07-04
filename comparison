@@ -1,3 +1,39 @@
+
+import glob
+results=[]
+dirs=['001','002','003','004','005','006']
+for diri in dirs:
+  dir_path = r'/content/drive/MyDrive/Citi-master-2/batch_0001/'+diri+'/*Item7_excerpt.txt'
+  res = glob.glob(dir_path)
+  dir_path = r'/content/drive/MyDrive/Citi-master-2/batch_0001/'+diri+'/*Item7A_excerpt.txt'
+  res2 = glob.glob(dir_path)
+  rest=res+res2
+  for res in rest:
+      print(res)
+      with open(res,"r") as f:
+        ticker=res.split("/")[-1].split("_")[0]
+        a=(f.read())
+        words = ["interest rate hedges", "derivatives","swaps", "rate lock"]
+
+        # Your input string
+        s = "I like to eat apple and banana."
+
+        # Iterate over the list of words
+        for word in words:
+            # If the word is found in the string, print it
+            for match in re.finditer(r'\b' + word + r'\b', a):
+                start=match.start()
+                result={'ticker':ticker,'found':word,'context':a[(start-300):start+300]}
+                results.append(result)
+    #            print(result)
+
+df=pd.DataFrame(results)
+df['value']='X'
+df2=df.drop_duplicates(subset=['ticker','found'])
+pd.pivot(df2,index='ticker',columns='found',values='value').fillna(' ')
+
+////
+
 ''
 requirements.txt file contents:
 
