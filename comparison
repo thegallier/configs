@@ -1,4 +1,82 @@
+CREATE TABLE relationship_types (
+    relationship_type INT PRIMARY KEY,
+    description VARCHAR(255)
+);
 
+
+----
+
+CREATE TABLE nodes (
+    node VARCHAR(255) PRIMARY KEY,
+    class VARCHAR(255)
+);
+
+INSERT INTO relationship_types (relationship_type, description) VALUES
+(1, 'Type 1'),
+(2, 'Type 2'),
+(3, 'Type 3');
+
+----
+
+INSERT INTO nodes (node, class) VALUES
+('A', 'X'),
+('B', 'X'),
+('C', 'Y'),
+('D', 'X'),
+('E', 'Y');
+---
+
+WITH RECURSIVE trace_back(source, destination) AS (
+    SELECT e.source, e.destination
+    FROM dag_edges e
+    JOIN nodes n ON e.source = n.node
+    WHERE e.destination = 'E' AND n.class = 'X'
+    UNION ALL
+    SELECT e.source, e.destination
+    FROM dag_edges e
+    JOIN nodes n ON e.source = n.node
+    INNER JOIN trace_back tb ON tb.source = e.destination
+    WHERE n.class = 'X'
+)
+SELECT DISTINCT source FROM trace_back;
+--
+
+WITH RECURSIVE trace_forward(source, destination) AS (
+    SELECT e.source, e.destination
+    FROM dag_edges e
+    JOIN nodes n ON e.destination = n.node
+    WHERE e.source = 'A' AND n.class = 'X'
+    UNION ALL
+    SELECT e.source, e.destination
+    FROM dag_edges e
+    JOIN nodes n ON e.destination = n.node
+    INNER JOIN trace_forward tf ON tf.destination = e.source
+    WHERE n.class = 'X'
+)
+SELECT DISTINCT destination FROM trace_forward;
+---
+
+To select based on both the node type and the relationship type, you can modify the recursive query we discussed above to include conditions on both of these fields.
+
+Here's how you would do it for nodes of class 'X' that 'A' connects to, using only relationships of type 1:
+
+sql
+Copy code
+WITH RECURSIVE trace_forward(source, destination, relationship_type) AS (
+    SELECT e.source, e.destination, e.relationship_type
+    FROM dag_edges e
+    JOIN nodes n ON e.destination = n.node
+    WHERE e.source = 'A' AND n.class = 'X' AND e.relationship_type = 1
+    UNION ALL
+    SELECT e.source, e.destination, e.relationship_type
+    FROM dag_edges e
+    JOIN nodes n ON e.destination = n.node
+    INNER JOIN trace_forward tf ON tf.destination = e.source
+    WHERE n.class = 'X' AND e.relationship_type = 1
+)
+SELECT DISTINCT destination FROM trace_forward;
+
+/====
 import glob
 results=[]
 dirs=['001','002','003','004','005','006']
