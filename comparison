@@ -1,3 +1,33 @@
+import openpyxl
+import json
+
+def extract_excel_data(file_path):
+    wb = openpyxl.load_workbook(file_path, data_only=False)  # load workbook
+    data = {}
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]  # get the worksheet
+        sheet_data = []
+        for row in ws.iter_rows():
+            for cell in row:
+                cell_data = {
+                    'address': cell.coordinate,
+                    'value': cell.value,
+                    'formula': cell.data_type == 'f' and cell.value or None
+                }
+                sheet_data.append(cell_data)
+        data[sheet] = sheet_data
+    return data
+
+def save_to_json(data, file_path):
+    with open(file_path, 'w') as f:
+        json.dump(data, f, indent=4)
+
+# Use these functions
+excel_data = extract_excel_data('your_file.xlsx')  # replace with your Excel file path
+save_to_json(excel_data, 'output.json')  # replace with desired JSON output file path
+
+
+
 ///
 CREATE TABLE relationship_types (
     relationship_type INT PRIMARY KEY,
