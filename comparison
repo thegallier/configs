@@ -1,3 +1,7 @@
+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
+PINECONE_ENV=northamerica-northeast1-gcp
+
+
 import openpyxl
 import json
 
