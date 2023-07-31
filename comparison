@@ -1,6 +1,4 @@
 
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = "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"
-PINECONE_ENV=northamerica-northeast1-gcp
 
 
 import openpyxl
