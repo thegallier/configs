@@ -1,4 +1,1645 @@
+import random
+import json
 
+# List of stocks
+stocks = ['AAPL', 'GOOG', 'MSFT', 'AMZN', 'FB']
+customers = ['Bob', 'Alice', 'John', 'Jane', 'Mary']
+
+# List of comparisons
+comparisons = ['>', '<']
+
+# List of window functions
+window_functions = [
+    {'func': 'mavg', 'desc': 'moving average'},
+    {'func': 'mcount', 'desc': 'moving count'},
+    {'func': 'msum', 'desc': 'moving sum'},
+    {'func': 'mmin', 'desc': 'moving minimum'},
+    {'func': 'mmax', 'desc': 'moving maximum'},
+    {'func': 'mdev', 'desc': 'moving standard deviation'},
+]
+
+# List of aggregate functions
+aggregate_functions = [
+    {'func': 'sum', 'desc': 'total'},
+    {'func': 'count', 'desc': 'number'},
+    {'func': 'avg', 'desc': 'average'},
+    {'func': 'min', 'desc': 'minimum'},
+    {'func': 'max', 'desc': 'maximum'},
+    {'func': 'dev', 'desc': 'standard deviation'},
+]
+
+# Generate examples
+examples = []
+for _ in range(100):
+    if _ % 2 == 0: # Stocks related questions
+        stock = random.choice(stocks)
+        comparison = random.choice(comparisons)
+        window_function = random.choice(window_functions)
+        n = random.randint(3, 5)
+
+        example = {
+            "CreateTable": "`stocks set ([] date:2023.06.01 2023.06.02 2023.06.03 2023.06.04 2023.06.05 2023.06.06 2023.06.07; stock:`{}`{}`{}`{}`{}`{}; close:1500 1505 1490 1485 1495 1500 1510)".format(stock, stock, stock, stock, stock, stock),
+            "QuestionInEnglish": "On which days was the {}-day {} of closing price for {} {} the closing price?".format(n, window_function['desc'], stock, "above" if comparison == ">" else "below"),
+            "whereCond": "(and;enlist (in;`stock;enlist `{}`);({};{}[{}] `close;`close))".format(stock, comparison, window_function['func'], n),
+            "groupBy": "(enlist `date)!enlist `date",
+            "selectCond": "(enlist `{}_close)!enlist ({}[{}]; `close)".format(window_function['func'], window_function['func'], n),
+            "AnswerInQ": "?[`stocks; whereCond; groupBy; selectCond]"
+        }
+    else: # Orders related questions
+        customer = random.choice(customers)
+        date_start = "2023.06.{}".format(random.randint(1, 15))
+        date_end = "2023.06.{}".format(random.randint(16, 30))
+        aggregate_function = random.choice(aggregate_functions)
+
+        example = {
+            "CreateTable": "`orders set ([] date:2023.06.01 2023.06.02 2023.06.03 2023.06.04 2023.06.05 2023.06.06 2023.06.07; Customer:`{}`{}`{}`{}`{}`{}; Qty:10 20 30 40 50 60 70)".format(customer, customer, customer, customer, customer, customer),
+            "QuestionInEnglish": "What is the {} of quantities of orders for {} between {} and {}?".format(aggregate_function['desc'], customer, date_start, date_end),
+            "whereCond": "(and;enlist (in;`Customer;enlist `{}`);(within;`date;(enlist (`{}`;`{}))))".format(customer, date_start, date_end),
+            "groupBy": "(enlist `Customer)!enlist `Customer",
+            "selectCond": "(enlist `{}_qty)!enlist ({}; `Qty)".format(aggregate_function['func'], aggregate_function['func']),
+            "AnswerInQ": "?[`orders; whereCond; groupBy; selectCond]"
+        }
+
+    examples.append(example)
+
+# Save as JSON
+with open('examples.json', 'w') as f:
+    json.dump(examples, f, indent=2)
+
+
+
+
+******
+TokenBender/llama2-7b-chat-hf-codeCherryPop-qLoRA-merged
+
+from transformers import AutoTokenizer
+import transformers
+import torch
+
+model = "TokenBender/llama2-7b-chat-hf-codeCherryPop-qLoRA-merged"
+
+tokenizer = AutoTokenizer.from_pretrained(model)
+pipeline = transformers.pipeline(
+    "text-generation",
+    model=model,
+    torch_dtype=torch.float16,
+    device_map="auto",
+)
+
+conversation_text = '''[INST]<<SYS>>
+ You are a helpful coding assistant that provides code based on the given query in context.
+<</SYS>>
+Write a jax program to implement a transformer.[/INST]'''
+
+sequences = pipeline(
+    conversation_text,
+    do_sample=True,
+    top_k=10,
+    num_return_sequences=1,
+    eos_token_id=tokenizer.eos_token_id,
+    max_length=2048,
+)
+for seq in sequences:
+    print(f"Result: {seq['generated_text']}")
+
+
+conversation_text = '''[INST]<<SYS>>
+ You are a helpful coding assistant that provides code based on the given query in context.
+<</SYS>>
+Can you add deepspeed trainer for a jax transformer model where we save the weights first to cpu memory and then to nvme.[/INST]'''
+
+sequences = pipeline(
+    conversation_text,
+    do_sample=True,
+    top_k=10,
+    num_return_sequences=1,
+    eos_token_id=tokenizer.eos_token_id,
+    max_length=2048,
+)
+for seq in sequences:
+    print(f"Result: {seq['generated_text']}")
+
+
+/=====
+pip installaccelerate # git+https://github.com/huggingface/accelerate.git
+pip install bitsandbytes
+pip install datasets==2.13.1
+pip install transformers # git+https://github.com/huggingface/transformers.git
+pip install peft #git+https://github.com/huggingface/peft.git
+pip install trl #git+https://github.com/lvwerra/trl.git
+pip installscipy
+
+import argparse
+import bitsandbytes as bnb
+from datasets import load_dataset
+from functools import partial
+import os
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, AutoPeftModelForCausalLM
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed, Trainer, TrainingArguments, BitsAndBytesConfig, \
+    DataCollatorForLanguageModeling, Trainer, TrainingArguments
+from datasets import load_dataset
+
+def load_model(model_name, bnb_config):
+    n_gpus = torch.cuda.device_count()
+    max_memory = f'{40960}MB'
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        quantization_config=bnb_config,
+        device_map="auto", # dispatch efficiently the model on the available ressources
+        max_memory = {i: max_memory for i in range(n_gpus)},
+    )
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=True)
+
+    # Needed for LLaMA tokenizer
+    tokenizer.pad_token = tokenizer.eos_token
+
+    return model, tokenizer
+
+from datasets import load_dataset
+
+dataset = load_dataset("databricks/databricks-dolly-15k", split="train
+
+print(f'Number of prompts: {len(dataset)}')
+print(f'Column names are: {dataset.column_names}')
+
+
+def preprocess_batch(batch, tokenizer, max_length):
+    """
+    Tokenizing a batch
+    """
+    return tokenizer(
+        batch["text"],
+        max_length=max_length,
+        truncation=True,
+    )
+
+
+# SOURCE https://github.com/databrickslabs/dolly/blob/master/training/trainer.py
+def get_max_length(model):
+    conf = model.config
+    max_length = None
+    for length_setting in ["n_positions", "max_position_embeddings", "seq_length"]:
+        max_length = getattr(model.config, length_setting, None)
+        if max_length:
+            print(f"Found max lenth: {max_length}")
+            break
+    if not max_length:
+        max_length = 1024
+        print(f"Using default max length: {max_length}")
+    return max_length
+
+def preprocess_batch(batch, tokenizer, max_length):
+    """
+    Tokenizing a batch
+    """
+    return tokenizer(
+        batch["text"],
+        max_length=max_length,
+        truncation=True,
+    )
+
+def preprocess_dataset(tokenizer: AutoTokenizer, max_length: int, seed, dataset: str):
+    """Format & tokenize it so it is ready for training
+    :param tokenizer (AutoTokenizer): Model Tokenizer
+
+def create_bnb_config():
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
+    return bnb_config
+
+def create_peft_config(modules):
+    """
+    Create Parameter-Efficient Fine-Tuning config for your model
+    :param modules: Names of the modules to apply Lora to
+    """
+    config = LoraConfig(
+        r=16,  # dimension of the updated matrices
+        lora_alpha=64,  # parameter for scaling
+        target_modules=modules,
+        lora_dropout=0.1,  # dropout probability for layers
+        bias="none",
+        task_type="CAUSAL_LM",
+    )
+
+    return config
+
+def find_all_linear_names(model):
+    cls = bnb.nn.Linear4bit #if args.bits == 4 else (bnb.nn.Linear8bitLt if args.bits == 8 else torch.nn.Linear)
+    lora_module_names = set()
+    for name, module in model.named_modules():
+        if isinstance(module, cls):
+            names = name.split('.')
+            lora_module_names.add(names[0] if len(names) == 1 else names[-1])
+
+    if 'lm_head' in lora_module_names:  # needed for 16-bit
+        lora_module_names.remove('lm_head')
+    return list(lora_module_names)
+
+def print_trainable_parameters(model, use_4bit=False):
+    """
+    Prints the number of trainable parameters in the model.
+    """
+    trainable_params = 0
+    all_param = 0
+    for _, param in model.named_parameters():
+        num_params = param.numel()
+        # if using DS Zero 3 and the weights are initialized empty
+        if num_params == 0 and hasattr(param, "ds_numel"):
+            num_params = param.ds_numel
+
+        all_param += num_params
+        if param.requires_grad:
+            trainable_params += num_params
+    if use_4bit:
+        trainable_params /= 2
+    print(
+        f"all params: {all_param:,d} || trainable params: {trainable_params:,d} || trainable%: {100 * trainable_params / all_param}"
+    )
+
+model_name = "meta-llama/Llama-2-7b-hf" 
+
+bnb_config = create_bnb_config()
+
+model, tokenizer = load_model(model_name, bnb_config)
+
+max_length = get_max_length(model)
+
+dataset = preprocess_dataset(tokenizer, max_length, seed, dataset)
+
+def train(model, tokenizer, dataset, output_dir):
+    # Apply preprocessing to the model to prepare it by
+    # 1 - Enabling gradient checkpointing to reduce memory usage during fine-tuning
+    model.gradient_checkpointing_enable()
+
+    # 2 - Using the prepare_model_for_kbit_training method from PEFT
+    model = prepare_model_for_kbit_training(model)
+
+    # Get lora module names
+    modules = find_all_linear_names(model)
+
+    # Create PEFT config for these modules and wrap the model to PEFT
+    peft_config = create_peft_config(modules)
+    model = get_peft_model(model, peft_config)
+    
+    # Print information about the percentage of trainable parameters
+    print_trainable_parameters(model)
+    
+    # Training parameters
+    trainer = Trainer(
+        model=model,
+        train_dataset=dataset,
+        args=TrainingArguments(
+            per_device_train_batch_size=1,
+            gradient_accumulation_steps=4,
+            warmup_steps=2,
+            max_steps=20,
+            learning_rate=2e-4,
+            fp16=True,
+            logging_steps=1,
+            output_dir="outputs",
+            optim="paged_adamw_8bit",
+        ),
+        data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False)
+    )
+
+ model.config.use_cache = False  # re-enable for inference to speed up predictions for similar inputs
+    
+    ### SOURCE https://github.com/artidoro/qlora/blob/main/qlora.py
+    # Verifying the datatypes before training
+    
+    dtypes = {}
+    for _, p in model.named_parameters():
+        dtype = p.dtype
+        if dtype not in dtypes: dtypes[dtype] = 0
+        dtypes[dtype] += p.numel()
+    total = 0
+    for k, v in dtypes.items(): total+= v
+    for k, v in dtypes.items():
+        print(k, v, v/total)
+     
+    do_train = True
+    
+    # Launch training
+    print("Training...")
+    
+    if do_train:
+        train_result = trainer.train()
+        metrics = train_result.metrics
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
+        trainer.save_state()
+        print(metrics)    
+    
+    ###
+    
+    # Saving model
+    print("Saving last checkpoint of the model...")
+    os.makedirs(output_dir, exist_ok=True)
+    trainer.model.save_pretrained(output_dir)
+    
+    # Free memory for merging weights
+    del model
+    del trainer
+    torch.cuda.empty_cache()
+    
+    
+output_dir = "results/llama2/final_checkpoint"
+train(model, tokenizer, dataset, output_dir)
+    :param max_length (int): Maximum number of tokens to emit from tokenizer
+    """
+    
+    # Add prompt to each sample
+    print("Preprocessing dataset...")
+    dataset = dataset.map(create_prompt_formats)#, batched=True)
+    
+    # Apply preprocessing to each batch of the dataset & and remove 'instruction', 'context', 'response', 'category' fields
+    _preprocessing_function = partial(preprocess_batch, max_length=max_length, tokenizer=tokenizer)
+    dataset = dataset.map(
+        _preprocessing_function,
+        batched=True,
+        remove_columns=["instruction", "context", "response", "text", "category"],
+    )
+
+    # Filter out samples that have input_ids exceeding max_length
+    dataset = dataset.filter(lambda sample: len(sample["input_ids"]) < max_length)
+    
+    # Shuffle dataset
+    dataset = dataset.shuffle(seed=seed)
+
+    return dataset
+
+
+====
+
+import openpyxl
+import json
+
+def extract_excel_data(file_path):
+    wb = openpyxl.load_workbook(file_path, data_only=False)  # load workbook
+    data = {}
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]  # get the worksheet
+        sheet_data = []
+        for row in ws.iter_rows():
+            for cell in row:
+                cell_data = {
+                    'address': cell.coordinate,
+                    'value': cell.value,
+                    'formula': cell.data_type == 'f' and cell.value or None
+                }
+                sheet_data.append(cell_data)
+        data[sheet] = sheet_data
+    return data
+
+def save_to_json(data, file_path):
+    with open(file_path, 'w') as f:
+        json.dump(data, f, indent=4)
+
+# Use these functions
+excel_data = extract_excel_data('your_file.xlsx')  # replace with your Excel file path
+save_to_json(excel_data, 'output.json')  # replace with desired JSON output file path
+
+
+
+///
+CREATE TABLE relationship_types (
+    relationship_type INT PRIMARY KEY,
+    description VARCHAR(255)
+);
+
+
+----
+
+CREATE TABLE nodes (
+    node VARCHAR(255) PRIMARY KEY,
+    class VARCHAR(255)
+);
+
+INSERT INTO relationship_types (relationship_type, description) VALUES
+(1, 'Type 1'),
+(2, 'Type 2'),
+(3, 'Type 3');
+
+----
+
+INSERT INTO nodes (node, class) VALUES
+('A', 'X'),
+('B', 'X'),
+('C', 'Y'),
+('D', 'X'),
+('E', 'Y');
+---
+
+WITH RECURSIVE trace_back(source, destination) AS (
+    SELECT e.source, e.destination
+    FROM dag_edges e
+    JOIN nodes n ON e.source = n.node
+    WHERE e.destination = 'E' AND n.class = 'X'
+    UNION ALL
+    SELECT e.source, e.destination
+    FROM dag_edges e
+    JOIN nodes n ON e.source = n.node
+    INNER JOIN trace_back tb ON tb.source = e.destination
+    WHERE n.class = 'X'
+)
+SELECT DISTINCT source FROM trace_back;
+--
+
+WITH RECURSIVE trace_forward(source, destination) AS (
+    SELECT e.source, e.destination
+    FROM dag_edges e
+    JOIN nodes n ON e.destination = n.node
+    WHERE e.source = 'A' AND n.class = 'X'
+    UNION ALL
+    SELECT e.source, e.destination
+    FROM dag_edges e
+    JOIN nodes n ON e.destination = n.node
+    INNER JOIN trace_forward tf ON tf.destination = e.source
+    WHERE n.class = 'X'
+)
+SELECT DISTINCT destination FROM trace_forward;
+---
+
+To select based on both the node type and the relationship type, you can modify the recursive query we discussed above to include conditions on both of these fields.
+
+Here's how you would do it for nodes of class 'X' that 'A' connects to, using only relationships of type 1:
+
+sql
+Copy code
+WITH RECURSIVE trace_forward(source, destination, relationship_type) AS (
+    SELECT e.source, e.destination, e.relationship_type
+    FROM dag_edges e
+    JOIN nodes n ON e.destination = n.node
+    WHERE e.source = 'A' AND n.class = 'X' AND e.relationship_type = 1
+    UNION ALL
+    SELECT e.source, e.destination, e.relationship_type
+    FROM dag_edges e
+    JOIN nodes n ON e.destination = n.node
+    INNER JOIN trace_forward tf ON tf.destination = e.source
+    WHERE n.class = 'X' AND e.relationship_type = 1
+)
+SELECT DISTINCT destination FROM trace_forward;
+
+/====
+import glob
+results=[]
+dirs=['001','002','003','004','005','006']
+for diri in dirs:
+  dir_path = r'/content/drive/MyDrive/Citi-master-2/batch_0001/'+diri+'/*Item7_excerpt.txt'
+  res = glob.glob(dir_path)
+  dir_path = r'/content/drive/MyDrive/Citi-master-2/batch_0001/'+diri+'/*Item7A_excerpt.txt'
+  res2 = glob.glob(dir_path)
+  rest=res+res2
+  for res in rest:
+      print(res)
+      with open(res,"r") as f:
+        ticker=res.split("/")[-1].split("_")[0]
+        a=(f.read())
+        words = ["interest rate hedges", "derivatives","swaps", "rate lock"]
+
+        # Your input string
+        s = "I like to eat apple and banana."
+
+        # Iterate over the list of words
+        for word in words:
+            # If the word is found in the string, print it
+            for match in re.finditer(r'\b' + word + r'\b', a):
+                start=match.start()
+                result={'ticker':ticker,'found':word,'context':a[(start-300):start+300]}
+                results.append(result)
+    #            print(result)
+
+df=pd.DataFrame(results)
+df['value']='X'
+df2=df.drop_duplicates(subset=['ticker','found'])
+pd.pivot(df2,index='ticker',columns='found',values='value').fillna(' ')
+
+////
+
+''
+requirements.txt file contents:
+
+langchain==0.0.154
+PyPDF2==3.0.1
+python-dotenv==1.0.0
+streamlit==1.18.1
+faiss-cpu==1.7.4
+streamlit-extras
+'''
+
+
+import streamlit as st
+from dotenv import load_dotenv
+import pickle
+from PyPDF2 import PdfReader
+from streamlit_extras.add_vertical_space import add_vertical_space
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.llms import OpenAI
+from langchain.chains.question_answering import load_qa_chain
+from langchain.callbacks import get_openai_callback
+import os
+
+# Sidebar contents
+with st.sidebar:
+    st.title('🤗💬 LLM Chat App')
+    st.markdown('''
+    ## About
+    This app is an LLM-powered chatbot built using:
+    - [Streamlit](https://streamlit.io/)
+    - [LangChain](https://python.langchain.com/)
+    - [OpenAI](https://platform.openai.com/docs/models) LLM model
+
+    ''')
+    add_vertical_space(5)
+    st.write('Made with ❤️ by [Prompt Engineer](https://youtube.com/@engineerprompt)')
+
+load_dotenv()
+
+def main():
+    st.header("Chat with PDF 💬")
+
+
+    # upload a PDF file
+    pdf = st.file_uploader("Upload your PDF", type='pdf')
+
+    # st.write(pdf)
+    if pdf is not None:
+        pdf_reader = PdfReader(pdf)
+        
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len
+            )
+        chunks = text_splitter.split_text(text=text)
+
+        # # embeddings
+        store_name = pdf.name[:-4]
+        st.write(f'{store_name}')
+        # st.write(chunks)
+
+        if os.path.exists(f"{store_name}.pkl"):
+            with open(f"{store_name}.pkl", "rb") as f:
+                VectorStore = pickle.load(f)
+            # st.write('Embeddings Loaded from the Disk')s
+        else:
+            embeddings = OpenAIEmbeddings()
+            VectorStore = FAISS.from_texts(chunks, embedding=embeddings)
+            with open(f"{store_name}.pkl", "wb") as f:
+                pickle.dump(VectorStore, f)
+
+        # embeddings = OpenAIEmbeddings()
+        # VectorStore = FAISS.from_texts(chunks, embedding=embeddings)
+
+        # Accept user questions/query
+        query = st.text_input("Ask questions about your PDF file:")
+        # st.write(query)
+
+        if query:
+            docs = VectorStore.similarity_search(query=query, k=3)
+
+            llm = OpenAI()
+            chain = load_qa_chain(llm=llm, chain_type="stuff")
+            with get_openai_callback() as cb:
+                response = chain.run(input_documents=docs, question=query)
+                print(cb)
+            st.write(response)
+
+if __name__ == '__main__':
+    main()
+
+/=====
+https://replicate.com/p/d2kfrf2ivzhsljxyaru4prfwdu
+
+/===
+
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import transformers
+import torch
+
+model = "tiiuae/falcon-40b"
+
+tokenizer = AutoTokenizer.from_pretrained(model)
+pipeline = transformers.pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer,
+    torch_dtype=torch.bfloat16,
+    trust_remote_code=True,
+    device_map="auto",
+)
+sequences = pipeline(
+   "Girafatron is obsessed with giraffes, the most glorious animal on the face of this Earth. Giraftron believes all other animals are irrelevant when compared to the glorious majesty of the giraffe.\nDaniel: Hello, Girafatron!\nGirafatron:",
+    max_length=200,
+    do_sample=True,
+    top_k=10,
+    num_return_sequences=1,
+    eos_token_id=tokenizer.eos_token_id,
+)
+for seq in sequences:
+    print(f"Result: {seq['generated_text']}")
+//==
+The paper "Gorilla: Large Language Model Connected with Massive APIs" introduces Gorilla, a fine-tuned Large Language Model (LLM) that outperforms GPT-4 in writing API calls. The authors address the challenges faced by LLMs in effectively using tools via API calls, such as generating accurate input arguments and avoiding hallucination of incorrect API usage. Gorilla, when combined with a document retriever, adapts to document changes at test-time, mitigates hallucination issues, and keeps up with frequently updated documentation. The model's effectiveness is evaluated using APIBench, a dataset of HuggingFace, TorchHub, and TensorHub APIs, demonstrating increased reliability and applicability of LLM outputs. The Gorilla model and related resources are available at https://gorilla.cs.berkeley.edu.
+
+
+The paper "QLoRA: Efficient Finetuning of Quantized LLMs" presents QLoRA, a method for efficient finetuning of Large Language Models (LLMs) that enables finetuning a 65B parameter model on a single 48GB GPU. QLoRA introduces innovations like a new data type, 4-bit NormalFloat (NF4), double quantization, and paged optimizers to save memory without compromising performance. The authors' model family, Guanaco, outperforms all previous models on the Vicuna benchmark, achieving near ChatGPT performance with significantly less finetuning time. The paper provides a detailed analysis of instruction following and chatbot performance across multiple datasets and model scales, demonstrating that QLoRA finetuning on a small high-quality dataset leads to state-of-the-art results. The authors also critique current chatbot benchmarks and release all models and code, including CUDA kernels for 4-bit training.
+https://arxiv.org/abs/2305.14314
+
+The paper titled “Reprompting: Automated Chain-of-Thought Prompt Inference Through Gibbs Sampling” introduces Reprompting, an iterative sampling algorithm that searches for the Chain-of-Thought (CoT) recipes for a given task without human intervention. Through Gibbs sampling, the authors infer CoT recipes that work consistently well for a set of training samples. Their method iteratively samples new recipes using previously sampled solutions as parent prompts to solve other training problems1.
+
+models vicuna 13b with mpt
+Falcon-40B, developed by TII, is a 40B parameter causal decoder-only model trained on 1,000B tokens of RefinedWeb enhanced with curated corpora. It outperforms other open-source models like LLaMA, StableLM, RedPajama, and MPT, making it the best open-source model currently available. Falcon-40B features an architecture optimized for inference, with FlashAttention and multiquery. It is available under a license allowing commercial use. However, it is a raw, pretrained model and should be further finetuned for most use cases. The model is trained mostly on English, German, Spanish, French, with limited capabilities in Italian, Portuguese, Polish, Dutch, Romanian, Czech, and Swedish. It is recommended to finetune Falcon-40B for specific tasks and to take appropriate precautions for any production use.
+https://huggingface.co/tiiuae/falcon-40b
+
+optimizer
+
+https://arxiv.org/pdf/2305.14342.pdf
+The paper "Sophia: A Scalable Stochastic Second-order Optimizer for Language Model Pre-training" by Hong Liu, Zhiyuan Li, David Hall, Percy Liang, and Tengyu Ma introduces Sophia, a scalable second-order optimizer designed to improve the efficiency of language model pre-training. Sophia uses a lightweight estimate of the diagonal Hessian as the pre-conditioner and employs element-wise clipping to control the worst-case update size, mitigating the negative impact of non-convexity and rapid Hessian changes. The optimizer estimates the diagonal Hessian only every few iterations, minimizing time and memory overhead. In tests with GPT-2 models of various sizes, Sophia achieved a 2x speed-up compared to Adam in terms of the number of steps, total compute, and wall-clock time. The authors provide theoretical evidence that Sophia adapts to the curvature in different components of the parameters, which can be highly heterogeneous for language modeling tasks.
+
+alibi
+
+
+The video discusses the release of MPT-7B, the MosaicML Pretrained Transformer, a new family of open-source large language models (LLMs) that are commercially usable. The video provides general information about the model and compares it to the well-known LLaMA model from Meta AI. The second half of the video is dedicated to explaining ALiBi, a relative positional method used in MPT instead of the commonly used absolute positional embeddings. The video is structured into chapters, starting with an introduction to MPT-7B, followed by detailed information about the model, a discussion on finetuned MPT models, and finally an explanation of ALiBi.
+https://www.youtube.com/watch?v=rb02ZnkcW4Y
+
+The paper "Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation" by Ofir Press, Noah A. Smith, and Mike Lewis explores how transformer models can extrapolate at inference time for sequences longer than those seen during training. The authors introduce a new and more efficient position method, Attention with Linear Biases (ALiBi), which biases query-key attention scores with a penalty proportional to their distance, rather than adding positional embeddings to word embeddings. They demonstrate that ALiBi can train a 1.3 billion parameter model on input sequences of length 1024 that extrapolates to input sequences of length 2048, achieving the same perplexity as a sinusoidal position embedding model trained on inputs of length 2048 but training 11% faster and using 11% less memory. ALiBi's recency bias also leads it to outperform multiple strong position methods on the WikiText-103 benchmark.
+https://arxiv.org/pdf/2108.12409v2.pdf
+
+
+
+
+////
+
+import os
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = "HUGGINGFACEHUB_API_TOKEN"
+
+# Document Loader
+from langchain.document_loaders import TextLoader
+loader = TextLoader('./state_of_the_union.txt')
+documents = loader.load()
+
+import textwrap
+
+def wrap_text_preserve_newlines(text, width=110):
+    # Split the input text into lines based on newline characters
+    lines = text.split('\n')
+
+    # Wrap each line individually
+    wrapped_lines = [textwrap.fill(line, width=width) for line in lines]
+
+    # Join the wrapped lines back together using newline characters
+    wrapped_text = '\n'.join(wrapped_lines)
+
+    return wrapped_text
+    
+from langchain.text_splitter import CharacterTextSplitter
+text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+docs = text_splitter.split_documents(documents)
+
+from langchain.embeddings import HuggingFaceEmbeddings
+
+embeddings = HuggingFaceEmbeddings()
+
+!pip install faiss-cpu
+
+from langchain.vectorstores import FAISS
+
+db = FAISS.from_documents(docs, embeddings)
+
+
+query = "What did the president say about the Supreme Court"
+docs = db.similarity_search(query)
+
+from langchain.chains.question_answering import load_qa_chain
+from langchain import HuggingFaceHub
+
+
+llm=HuggingFaceHub(repo_id="google/flan-t5-xl", model_kwargs={"temperature":0, "max_length":512})
+
+chain = load_qa_chain(llm, chain_type="stuff")
+
+query = "What did the president say about the Supreme Court"
+docs = db.similarity_search(query)
+chain.run(input_documents=docs, question=query)
+
+from langchain.document_loaders import UnstructuredPDFLoader
+from langchain.indexes import VectorstoreIndexCreator
+
+loaders = [UnstructuredPDFLoader(os.path.join(pdf_folder_path, fn)) for fn in os.listdir(pdf_folder_path)]
+loaders
+
+index = VectorstoreIndexCreator(
+    embedding=HuggingFaceEmbeddings(),
+    text_splitter=CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)).from_loaders(loaders)
+
+//change
+
+from langchain.chains import RetrievalQA
+chain = RetrievalQA.from_chain_type(llm=llm, 
+                                    chain_type="stuff", 
+                                    retriever=index.vectorstore.as_retriever(), 
+                                    input_key="question")
+				    
+llm=HuggingFaceHub(repo_id="google/flan-t5-xl", model_kwargs={"temperature":0, "max_length":512})
+
+
+---q&a
+
+import re
+import json
+
+def parse_verbs(verbs, text):
+    result = []
+    for verb in verbs:
+        verb_info = {}
+        verb_info['verb'] = verb
+        
+        # Extract verb definition
+        verb_defn = re.findall(rf"{verb} ⇒ ([^\n]+)", text)
+        if verb_defn:
+            verb_info['definition'] = verb_defn[0]
+        
+        # Extract verb explanation and examples
+        verb_explanation = re.search(rf"{verb} ⇒ [^\n]+\n([^\n]+)\n([^2]+)", text, re.DOTALL)
+        if verb_explanation:
+            verb_info['explanation'] = verb_explanation.group(1).strip()
+            verb_info['examples'] = verb_explanation.group(2).strip().split('\n')
+        
+        result.append(verb_info)
+    
+    return result
+
+# Test the function
+verbs = ['plus', 'negate', 'minus', 'first', 'times', 'sqrt', 'div', 'mod', 'where', 'flip', 'and', 'reverse', 'or', 'asc(desc)', 'less (more)', 'freq', 'equal', 'not', 'match', 'enlist', 'cat', 'sort', '[f]cut', 'count', '[f]take', 'floor', '[f]drop', 'str', 'parse', 'unique', 'find', 'type', '[f]at', 'value', 'dict']
+text = """
+2.1 plus ⇒ x+y
+Add x and y. Arguments can be elements or lists but if both x and y are lists then they must be of equal length.
+
+----
+
+{
+        "verb": "plus",
+        "definition": "x+y",
+        "explanation": "Add x and y. Arguments can be elements or lists but if both x and y are lists then they must be of equal length.",
+        "examples": [
+            "3+7",
+            "10",
+            "",
+            "a:3;",
+            " a+8",
+            "11",
+            "",
+            " 3+4 5 6 7",
+            "7 8 9 10",
+            "",
+            "3 4 5+4 5 6",
+            "7 9 11",
+            "",
+            " 3 4+1"
+        ]
+    },
+    
+
+////
+{
+  "question": "What is the Shakti programming language?",
+  "answer": "Shakti, also known as k9, is a programming language developed by Arthur Whitney and the team at Shakti. The language comes from a lineage of similar languages going back to APL. It's known for its terse syntax and high-speed data processing and analysis capabilities.",
+  "example": {
+    "input": "{x@(!#x)+\!#y}",
+    "output": "This is an example of a Shakti (k9) code snippet. The actual output would depend on the context and the specific values of 'x' and 'y'."
+  }
+}
+
+
+import json
+import re
+
+input_text = """
+2.5 times ⇒ x*y
+Mutliply x and y.
+3*4
+12
+3*4 5 6
+12 15 18
+1 2 3*4 5 6
+4 10 18
+
+2.6 sqrt ⇒ %x
+Return the square root of x.
+%25
+5.000e+00
+%14.4
+3.794e+00
+
+2.7 div ⇒ x%y
+Divide x by y.
+12%5
+2.400e+00
+6%2
+3.000e+00
+"""
+
+# Split input_text into sections using two or more newline characters as the separator
+sections = re.split('\n{2,}', input_text.strip())
+
+output = []
+
+for section in sections:
+    # Extract section number, verb, usage, and description
+    match_header = re.match(r"(\d+\.\d+) (\w+) ⇒ (.*)\n(.*)", section)
+    if match_header:
+        section_number = match_header.group(1)
+        verb = match_header.group(2)
+        usage = match_header.group(3)
+        description = match_header.group(4)
+    
+        # Extract examples
+        match_examples = re.findall(r"((?:\d+|\%|\*|\s)+)\n((?:\d+|\.\d+|e\+\d+|\s)+)", section)
+        examples = [{'input': example[0], 'output': example[1]} for example in match_examples]
+
+        data = {
+            'section': section_number,
+            'verb': verb,
+            'usage': usage,
+            'description': description,
+            'examples': examples
+        }
+
+        output.append(data)
+
+json_output = json.dumps(output, indent=2)
+print(json_output)
+
+====section split
+import re
+
+# Multi-line string
+s = """2.5 times ⇒ x*y
+Mutliply x and y.
+
+ 3*4
+12
+
+3*4 5 6
+12 15 18
+
+1 2 3*4 5 6
+4 10 18
+2.6 sqrt ⇒ %x
+Return the square root of x.
+
+ %25
+5.000e+00
+ %14.4
+3.794e+00
+2.7 div ⇒ x%y
+Divide x by y.
+
+ 12%5
+2.400e+00
+
+6%2
+3.000e+00"""
+
+# Split the string into sections at double newlines
+sections = re.split(r'\n{2,}', s)
+
+# Iterate over the sections
+for section in sections:
+    # Split the section into lines
+    lines = section.split('\n')
+    
+    # Split the first line into its parts
+    first_line_parts = re.split(r'\s+|⇒', lines[0])
+    first_line_parts = [part.strip() for part in first_line_parts]
+    
+    print(first_line_parts)
+
+# This will output each first line as a list of its parts
+
+==q answer
+
+[
+  {
+    "question": "What is the sum of the first three numbers in the reversed list?",
+    "answer": "15",
+    "example": "_3|1 2 3 4 5"
+  },
+  {
+    "question": "What are the sorted unique elements of the two combined lists?",
+    "answer": "1 2 3 4 5 6",
+    "example": "^?1 2 3,4 4 5 6"
+  },
+  {
+    "question": "What is the remainder when the sum of the first three numbers is divided by the last number in the list?",
+    "answer": "2",
+    "example": "_3|1 2 3 4 5!5"
+  },
+  {
+    "question": "What are the first three elements of the sorted list?",
+    "answer": "1 2 3",
+    "example": "_3^5 1 3 2 4"
+  },
+  {
+    "question": "What is the first element of the list after removing the first three elements?",
+    "answer": "4",
+    "example": "__3_1 2 3 4 5"
+  },
+  {
+    "question": "What is the sum of the first two elements in the reversed list?",
+    "answer": "9",
+    "example": "+/_2|1 2 3 4 5"
+  },
+  {
+    "question": "What is the sum of the first two numbers in the sorted list?",
+    "answer": "3",
+    "example": "+/_2^5 1 3 2 4"
+  },
+  {
+    "question": "What is the maximum value in the reversed list?",
+    "answer": "5",
+    "example": "|/|1 2 3 4 5"
+  },
+  {
+    "question": "What is the sum of the first three elements in the list after removing the first two elements?",
+    "answer": "12",
+    "example": "+/_3_2_1 2 3 4 5"
+  },
+  {
+    "question": "What is the remainder when the sum of the first two numbers is divided by the last number in the reversed list?",
+    "answer": "0",
+    "example": "+/_2|1 2 3 4 5!5"
+  },
+  {
+    "question": "What is the sum of the first three numbers in the list after removing duplicates?",
+    "answer": "6",
+    "example": "+/_3?1 2 3 3 4 5"
+  },
+  {
+    "question": "What is the square root of the first number in the sorted list?",
+    "answer": "1",
+    "example": "%_*^5 1 3 2 4"
+  },
+  {
+    "question": "What is the sum of the first three numbers in the reversed list?",
+    "answer": "15",
+    "example": "+/_3|1 2 3 4 5"
+  },
+  {
+    "question": "What is the sum of the first two numbers in the list after removing the first three elements?",
+    "answer": "9",
+    "example": "+/_2_3_1 2 3 4 5"
+  },
+  {
+    "question": "What is
+
+===
+
+[
+  {
+    "question": "How to add two numbers in Shakti?",
+    "answer": "You can use the 'plus' verb for addition. For example, to add 3 and 7, you would use the command '3+7'.",
+    "example": "3+7"
+  },
+  {
+    "question": "How to subtract two numbers in Shakti?",
+    "answer": "You can use the 'minus' verb for subtraction. For example, to subtract 2 from 5, you would use the command '5-2'.",
+    "example": "5-2"
+  },
+  
+  ===
+  [{
+"question": "How do I calculate the average of a list of numbers in Shakti?",
+"answer": "You can calculate the average of a list of numbers by summing up the numbers using the '+' operator and then dividing by the count of the numbers using the '%' operator.",
+"example": "list: 1 2 3 4 5;\navg: (+/list) % #list;"
+},
+{
+"question": "How do I find the maximum value in a list of numbers in Shakti?",
+"answer": "You can find the maximum value in a list of numbers using the 'max' function.",
+"example": "list: 1 2 3 4 5;\nmaxValue: max list;"
+},
+{
+"question": "How do I create a list of even numbers up to a given number in Shakti?",
+"answer": "You can create a list of even numbers up to a given number by using the 'til' function to create a list from 0 to the number and the 'mod' function with an argument of 2 to check for even numbers.",
+"example": "number: 10;\nevenNumbers: 2 * til number % 2;"
+},
+{
+"question": "How do I find the maximum value in a list of numbers in Shakti?",
+"answer": "You can find the maximum value in a list of numbers using the 'max' function.",
+"example": "list: 1 2 3 4 5;\nmaxValue: max list;"
+},
+{
+"question": "How do I calculate the sum of the squares of a list of numbers in Shakti?",
+"answer": "You can calculate the sum of the squares of a list of numbers by squaring the numbers using the 'sqr' function and then summing up the squares using the '+' operator.",
+"example": "list: 1 2 3 4 5;\nsumSquares: +/ sqr list;"
+},
+{
+"question": "How do I filter out numbers less than a certain value from a list of numbers in Shakti?",
+"answer": "You can filter out numbers less than a certain value from a list of numbers by using the 'where' function with a comparison function.",
+"example": "list: 1 2 3 4 5;\nvalue: 3;\nfiltered: list where list > value;"
+},
+{
+"question": "How do I count the number of occurrences of a certain value in a list in Shakti?",
+"answer": "You can count the number of occurrences of a certain value in a list by using the 'count' function with a comparison function.",
+"example": "list: 1 2 3 4 5;\nvalue: 3;\ncount: count list where list = value;"
+},
+
+////
+
+import json
+from random import choice
+
+# Definitions of Shakti operations
+shakti_definitions = {
+    '+': 'addition',
+    '-': 'subtraction',
+    '*': 'multiplication',
+    '%': 'division',
+    'til': 'sequence generation',
+    'max': 'maximum',
+    'min': 'minimum',
+    'avg': 'average',
+    'count': 'count',
+    'where': 'filter'
+}
+
+# List of sample data and functions
+sample_data = ['list: 1 2 3 4 5', 'number: 10', 'value: 3']
+sample_functions = ['avg: (+/list) % #list', 'evenNumbers: 2 * til number % 2', 
+                    'maxValue: max list', 'maxIndex: list ? max list', 
+                    'stringList: string list', 'sumSquares: +/ sqr list', 
+                    'filtered: list where list > value', 
+                    'count: count list where list = value']
+
+# Function to generate question, answer, example tuple
+def generate_tuple():
+    op = choice(list(shakti_definitions.keys()))
+    data = choice(sample_data)
+    func = choice(sample_functions)
+
+    question = f"How do I perform {shakti_definitions[op]} in Shakti?"
+    answer = f"You can perform {shakti_definitions[op]} by using the '{op}' operation."
+    example = f"{data};\n{func};"
+
+    return {"question": question, "answer": answer, "example": example}
+
+# Function to generate a number of tuples
+def generate_tuples(n):
+    return [generate_tuple() for _ in range(n)]
+
+# Generate 5 tuples as an example
+tuples = generate_tuples(5)
+
+# Convert to JSON
+json_output = json.dumps(tuples, indent=4)
+
+# Print the JSON
+print(json_output)
+
+/===
+
+import numpy as np
+import pandas as pd
+
+shakti_to_python = {
+    '+': {
+        'desc': 'addition',
+        'python': 'np.add(a, b)',
+    },
+    '-': {
+        'desc': 'subtraction',
+        'python': 'np.subtract(a, b)',
+    },
+    '*': {
+        'desc': 'multiplication',
+        'python': 'np.multiply(a, b)',
+    },
+    '%': {
+        'desc': 'division',
+        'python': 'np.divide(a, b)',
+    },
+    'til': {
+        'desc': 'sequence generation',
+        'python': 'np.arange(n)',
+    },
+    'max': {
+        'desc': 'maximum',
+        'python': 'np.max(a)',
+    },
+    'min': {
+        'desc': 'minimum',
+        'python': 'np.min(a)',
+    },
+    'avg': {
+        'desc': 'average',
+        'python': 'np.mean(a)',
+    },
+    'count': {
+        'desc': 'count',
+        'python': 'len(a)',
+    },
+    'where': {
+        'desc': 'filter',
+        'python': 'a[a > n]',
+    }
+}
+
+/====
+Disclaimer1
+
+Creating a comprehensive mapping between Shakti operations and Python code would involve systematically associating each Shakti operation with an equivalent Python function, likely from libraries such as NumPy and Pandas.
+
+However, please note that Shakti is designed as a high-performance, array-based language that can handle complex data operations in a minimalistic way. Therefore, translating Shakti operations into Python code may result in more verbose and complex Python scripts, as Python is a general-purpose language with a different design philosophy.
+
+Here are some basic examples of Shakti operations and their Python equivalents, using NumPy and Pandas:
+
+
+
+Disclaimer2
+
+This dictionary provides a basic translation of some Shakti operations into Python code using NumPy. Note that the Python code is represented as strings, so you would need to use eval() or similar methods to execute this code, which can be dangerous and is generally not recommended. Also, the Python code assumes that the variables (a, b, n) are already defined.
+
+Keep in mind that this is a simplified representation, and it doesn't cover all Shakti operations, especially more complex ones. Creating a comprehensive mapping would require a deep understanding of both Shakti and Python, and it would be a significant undertaking.
+
+
+
+
+
+
+
+=/
+
+results2=[]
+badresults2=[]
+for keyword in keywords:
+      print(keyword)
+      keyword2=keyword['link'].split("/")[0]
+      url2="https://code.kx.com/q/ref/"+keyword2
+      r=requests.get(url2)
+      soup=BeautifulSoup(r.text,"html.parser")
+      reflist=[x for x in soup.find_all("code",{"class":"language-syntax"})]
+      startline=(r.text).find('class="headerlink" href="#'+keyword2) 
+      if startline > 10:
+        try:
+          soup = BeautifulSoup(r.text[startline:-1], 'html.parser')
+
+          instruction = soup.select_one('code.language-syntax').get_text()
+          name = soup.select_one('p > em').get_text()
+          example = soup.select_one('pre.highlight > code.language-q').get_text()
+
+          def extract_key_and_value_from_li(li):
+              key = li.select_one('code').get_text()
+              value = li.text.replace(key, '').strip()
+              return key, value
+
+          where_items = soup.select('ul > li')
+
+          description = {}
+          for item in where_items:
+              if item.find('ul'):
+                  nested_list_items = item.select('ul > li')
+                  nested_dict = {}
+                  for nested_item in nested_list_items:
+                      key, value = extract_key_and_value_from_li(nested_item)
+                      nested_dict[key] = value
+                  key, value = extract_key_and_value_from_li(item)
+                  description[key] = {**nested_dict, **{'description': value}}
+              else:
+                  key, value = extract_key_and_value_from_li(item)
+                  description[key] = value
+
+          result_description_list = soup.select('ul > li')
+          result = {}
+          for result_item in result_description_list[-2:]:
+              key, value = extract_key_and_value_from_li(result_item)
+              result[key] = value
+
+          json_data = {
+              'instruction': instruction,
+              'name': name,
+              'example': example,
+              'description': description,
+              'result': result
+          }
+          soup = BeautifulSoup(r.text, 'lxml')
+
+          # Find all 'pre' elements with the 'highlight' class
+          pre_elements = soup.find_all('pre', class_='highlight')
+
+          # Extract the text from the found elements
+          texts = [pre_element.text for pre_element in pre_elements]
+
+          # Print the extracted texts
+          results2.append([keyword,json_data,texts])
+          print(keyword," good ")
+        except:
+          badresults2.append(keyword)
+          print(keyword," bad ")
+      else:
+        badresults2.append(keyword)
+        print(keyword," bad ")
+	/=====
+	
+soup = BeautifulSoup(r.text, 'lxml')
+
+# Find all 'pre' elements with the 'highlight' class
+pre_elements = soup.find_all('pre', class_='highlight')
+
+# Extract the text from the found elements
+texts = [pre_element.text for pre_element in pre_elements]
+
+# Print the extracted texts
+for text in texts:
+    print(text)
+
+/====
+
+	
+	
+x^y    ^[x;y]
+q)0^1 2 3 0N
+1 2 3 0
+q)100^1 2 -5 0N 10 0N
+1 2 -5 100 10 100
+q)1.0^1.2 -4.5 0n 0n 15
+1.2 -4.5 1 1 15
+q)`nobody^`tom`dick``harry
+`tom`dick`nobody`harry
+q)1 2 3 4 5^6 0N 8 9 0N
+6 2 8 9 5
+q)a:11.0 2.1 3.1 0n 4.5 0n
+q)type a
+9h
+q)10^a
+11 2.1 3.1 10 4.5 10
+q)type 10^a
+9h
+q)(`a`b`c!1 2 3)^`b`c!0N 30
+a| 1
+b| 2
+c| 30
+
+
+chatGpt4
+
+public class PalindromeChecker {
+
+    public static boolean isPalindrome(int num) {
+        int reverse = 0;
+        int temp = num;
+        int mask = (Integer.SIZE - Integer.numberOfLeadingZeros(num)) - 1;
+        int i = 0;
+        do {
+            reverse = (reverse << 1) | ((temp >>> i) & 1);
+            reverse = (reverse << 1) | ((temp >>> (mask - i)) & 1);
+            i++;
+        } while (i <= mask / 2);
+        return num == reverse;
+    }
+
+    public static void main(String[] args) {
+        int num = 12321;
+        if (isPalindrome(num)) {
+            System.out.println(num + " is a palindrome.");
+        } else {
+            System.out.println(num + " is not a palindrome.");
+        }
+    }
+}
+
+The fastest way to check if an integer is a palindrome would be to use an algorithm that involves only mathematical operations and no loops. One such algorithm involves reversing the digits of the number and comparing it with the original number. Here's an implementation in Java:
+
+public static boolean isPalindrome(int num) {
+    if (num < 0) {
+        return false; // negative numbers cannot be palindromes
+    }
+    int reversed = 0;
+    int original = num;
+    while (num != 0) {
+        reversed = reversed * 10 + num % 10;
+        num /= 10;
+    }
+    return original == reversed;
+}
+
+correct but what it is a very long bit pattern that you want to check if it is symmetric in a certain basis?
+
+If you have a very long bit pattern that you want to check for symmetry in a certain basis, you can use a bit-manipulation approach that takes advantage of bitwise operations to perform the comparison.
+
+Here's an implementation in Java that checks for symmetry in a certain basis:
+
+public static boolean isSymmetric(long num, int basis) {
+    long mask = (1L << basis) - 1L;
+    long reversed = 0L;
+    while (num != 0L) {
+        reversed = (reversed << basis) | (num & mask);
+        num >>>= basis;
+    }
+    return num == reversed;
+}
+
+
+
+/=====
+
+vicuna
+
+public class PalindromeNumber {
+public static void main(String[] args) {
+int num = 121;
+if (num == 0) {
+System.out.println(num + " is a palindrome.");
+}
+else {
+String reverse = String.valueOf(num);
+while (reverse.length()!= 0) {
+if (reverse.charAt(0)!= reverse.charAt(reverse.length() - 1)) {
+System.out.println(num + " is not a palindrome.");
+break;
+}
+reverse = reverse.substring(1, reverse.length() - 1);
+}
+}
+}
+
+This program first initializes the variable `num` to a non-zero value, since 0 is considered a palindrome. It then checks if `num` is equal to 0 using an `if` statement. If `num` is equal to 0, the program prints out that the number is a palindrome.
+Otherwise, the program converts the number to a string using the `String.valueOf()` method, and then uses a `while` loop to compare the first and last characters of the string. If the first and last characters are the same, the program continues looping until it finds two characters that are not the same, at which point it prints out that the number is not a palindrome and exits the loop.
+This program should print out the following output:
+
+/===
+koala
+
+BEGINNING OF CONVERSATION: USER: can you write a java program to check if a number is palindrome or not?
+
+Here's an example Java program that checks if a given integer is a palindrome or not:
+
+```java
+import java.util.Scanner;
+
+public class PalindromeChecker {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        System.out.print("Enter the number: ");
+        int num = sc.nextInt();
+
+        boolean isPalindrome = true;
+        for (int i = 0; i < num - 1; i++) {
+            if (num % 2!= 0) {
+                isPalindrome = false;
+                break;
+            }
+        }
+
+        System.out.println("Is " + num + " a palindrome?");
+        System.out.println("Answer: " + isPalindrome);
+    }
+}
+
+/===
+open assistant
+
+public class CheckPalindrome {
+    public static void main(String[] args) {
+        int num = 123;
+        
+        // Reverse the digits of the number and compare it with original number
+        int reverseNum = 0;
+        while (num > 0) {
+            int lastDigit = num % 10;
+            
+            reverseNum += lastDigit * pow(10, len - 1);
+            num /= 10;
+        }
+                
+        if (reverseNum == num) {
+            System.out.println("Number is a Palindrome");
+        } else {
+            System.out.println("Number is not a Palindrome");
+        }
+    }
+}
+
+no good
+
+import org.junit.*;
+
+public class CheckPalindromeTest {
+	@BeforeClass
+	public static void setup() {}
+    
+    @AfterClass
+    public static void tearDown(){}
+    
+    @Before
+    public void setUp(){}
+    
+    @After
+    public void TearDown(){}
+    
+	/** Test whether 123456789 is a palindrome */  
+	@Test
+	public void shouldReturnTrueFor123456789(){
+            Assert.assertEquals(true , new CheckPalindrome().isPalindrome(123));
+	} 
+	
+	/** Test whether 99 is a palindrome */ 
+	@Test
+	public void shouldReturnFalseFor99(){
+                Assert.assertEquals(false, new CheckPalindrome().isPalindrome(99));
+	} 
+}
+
+/====
+
+
+
+from datasets import load_dataset
+from transformers import LLaMATokenizer
+
+
+tokenizer = LLaMATokenizer.from_pretrained("decapoda-research/llama-7b-hf", add_eos_token=True)
+tokenizer.pad_token = tokenizer.eos_token
+tokenizer.pad_token_id = tokenizer.eos_token_id
+
+data = load_dataset("json", data_files="alpaca_data.json")
+
+
+def generate_prompt(data_point):
+    # sorry about the formatting disaster gotta move fast
+    if data_point["instruction"]:
+        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+{data_point["instruction"]}
+
+### Input:
+{data_point["input"]}
+
+### Response:
+{data_point["output"]}"""
+    else:
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
+
+### Instruction:
+{data_point["instruction"]}
+
+### Response:
+{data_point["output"]}"""
+
+
+data = data.map(lambda data_point: {"prompt": tokenizer(generate_prompt(data_point))})
+
+import os
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+import torch
+import torch.nn as nn
+import bitsandbytes as bnb
+from datasets import load_dataset
+import transformers
+from transformers import AutoTokenizer, AutoConfig, LLaMAForCausalLM, LLaMATokenizer
+from peft import prepare_model_for_int8_training, LoraConfig, get_peft_model
+
+# Setting for A100 - For 3090 
+MICRO_BATCH_SIZE = 8  # change to 4 for 3090
+BATCH_SIZE = 128
+GRADIENT_ACCUMULATION_STEPS = BATCH_SIZE // MICRO_BATCH_SIZE
+EPOCHS = 2  # paper uses 3
+LEARNING_RATE = 2e-5  # from the original paper
+CUTOFF_LEN = 256  # 256 accounts for about 96% of the data
+LORA_R = 4
+LORA_ALPHA = 16
+LORA_DROPOUT = 0.05
+
+
+model = LLaMAForCausalLM.from_pretrained(
+    "decapoda-research/llama-7b-hf",
+    load_in_8bit=True,
+    device_map="auto",
+)
+tokenizer = LLaMATokenizer.from_pretrained(
+    "decapoda-research/llama-7b-hf", add_eos_token=True
+)
+
+model = prepare_model_for_int8_training(model)
+
+config = LoraConfig(
+    r=LORA_R,
+    lora_alpha=LORA_ALPHA,
+    target_modules=["q_proj", "v_proj"],
+    lora_dropout=LORA_DROPOUT,
+    bias="none",
+    task_type="CAUSAL_LM",
+)
+model = get_peft_model(model, config)
+tokenizer.pad_token_id = 0  # unk. we want this to be different from the eos token
+data = load_dataset("json", data_files="alpaca_data.json")
+
+def generate_prompt(data_point):
+    # sorry about the formatting disaster gotta move fast
+    if data_point["input"]:
+        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+### Instruction:
+{data_point["instruction"]}
+### Input:
+{data_point["input"]}
+### Response:
+{data_point["output"]}"""
+    else:
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.
+### Instruction:
+{data_point["instruction"]}
+### Response:
+{data_point["output"]}"""
+
+
+data = data.shuffle().map(
+    lambda data_point: tokenizer(
+        generate_prompt(data_point),
+        truncation=True,
+        max_length=CUTOFF_LEN,
+        padding="max_length",
+    )
+)
+
+trainer = transformers.Trainer(
+    model=model,
+    train_dataset=data["train"],
+    args=transformers.TrainingArguments(
+        per_device_train_batch_size=MICRO_BATCH_SIZE,
+        gradient_accumulation_steps=GRADIENT_ACCUMULATION_STEPS,
+        warmup_steps=100,
+        num_train_epochs=EPOCHS,
+        learning_rate=LEARNING_RATE,
+        fp16=True,
+        logging_steps=1,
+        output_dir="lora-alpaca",
+        save_total_limit=3,
+    ),
+    data_collator=transformers.DataCollatorForLanguageModeling(tokenizer, mlm=False),
+)
+model.config.use_cache = False
+trainer.train(resume_from_checkpoint=False)
+
+model.save_pretrained("lora-alpaca")
+
+/=====
+// First, create a wrapper function for your C code:
+
+#include <stdio.h>
+
+void c_code_wrapper(void *context, void (*callback)(void *context)) {
+    // Your C code here
+    callback(context);
+}
+
+// Then expose this wrapper as a Rust extern function:
+
+extern "C" fn c_code_wrapper(context: *mut c_void, callback: extern fn(*mut c_void)) {
+    unsafe {
+        c_code_wrapper(context, callback);
+    }
+}
+
+// Finally, call the wrapper from Rust using an async closure:
+
+let mut context = 0;
+let callback = |context: *mut c_void| {
+    // Your Rust code here
+};
+
+let future = async {
+    c_code_wrapper(&mut context, callback);
+};
+
+// The future will execute the C code asynchronously.
+
+from bs4 import BeautifulSoup
+import requests
+
+r=requests.get("http://code.kx.com/q/ref")
+soup=BeautifulSoup(r.text,"html.parser")
+reflist=[x for x in soup.find_all('a') if str(x)[4:7] == "ref"]
+reflist2=[x for x in reflist if len(str(x).split('"'))>3]
+[{'link':(str(x)).split('"')[1],'descr':(str(x)).split('"')[3]} for x in reflist2[:-2]]
+reflist=[x for x in soup.find_all("div",{"class":"md-content"})]
+
+
+******
 TokenBender/llama2-7b-chat-hf-codeCherryPop-qLoRA-merged
 
 from transformers import AutoTokenizer
