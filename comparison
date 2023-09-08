@@ -1,3 +1,50 @@
+import requests
+from bs4 import BeautifulSoup
+
+def get_xbrl_links(cik, count=10):
+    base_url = "https://www.sec.gov/cgi-bin/browse-edgar"
+    params = {
+        "action": "getcompany",
+        "CIK": cik,
+        "type": "10-K",  # You can change this to another form type if needed
+        "dateb": "",
+        "owner": "exclude",
+        "count": count,
+        "output": "atom"
+    }
+    response = requests.get(base_url, params=params)
+    soup = BeautifulSoup(response.content, 'lxml')
+    links = []
+
+    for entry in soup.find_all('entry'):
+        for link in entry.find_all('link'):
+            if link.attrs.get('type') == 'text/html':
+                report_url = link.attrs.get('href')
+                xbrl_link = get_xbrl_link_from_report(report_url)
+                if xbrl_link:
+                    links.append(xbrl_link)
+
+    return links
+
+def get_xbrl_link_from_report(report_url):
+    response = requests.get(report_url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    for table_row in soup.find_all('tr'):
+        for cell in table_row.find_all('td'):
+            if 'XBRL INSTANCE DOCUMENT' in cell.get_text():
+                return cell.a['href']
+
+    return None
+
+# Example Usage
+cik = "0000320193"  # This is Apple Inc.'s CIK. Replace with the CIK of the company you're interested in.
+xbrl_links = get_xbrl_links(cik)
+for link in xbrl_links:
+    print(link)
+
+
+
+////
 import random
 import json
 
