@@ -1,3 +1,94 @@
+import gradio as gr
+import pandas as pd
+
+# Sample DataFrames for demonstration
+df1 = pd.DataFrame({
+    'A': ['A0', 'A1', 'A2', 'A3'],
+    'B': ['B0', 'B1', 'B2', 'B3'],
+    'C': ['C0', 'C1', 'C2', 'C3'],
+})
+
+df2 = pd.DataFrame({
+    'D': ['D0', 'D1', 'D2', 'D3'],
+    'E': ['E0', 'E1', 'E2', 'E3'],
+    'F': ['F0', 'F1', 'F2', 'F3'],
+})
+
+df3 = pd.DataFrame({
+    'G': ['G0', 'G1', 'G2', 'G3'],
+    'H': ['H0', 'H1', 'H2', 'H3'],
+    'I': ['I0', 'I1', 'I2', 'I3'],
+})
+
+def display_subsets(choice):
+    if choice == "Subset 1":
+        return df1.head(2), df2.head(2), df3.head(2)
+    elif choice == "Subset 2":
+        return df1.tail(2), df2.tail(2), df3.tail(2)
+    else:
+        return df1, df2, df3
+
+# Define Gradio interface with layout parameter
+iface = gr.Interface(
+    fn=display_subsets,
+    inputs=gr.inputs.Dropdown(choices=["Subset 1", "Subset 2", "Full Data"], label="Choose a Subset"),
+    outputs=[
+        gr.outputs.Dataframe(type="pandas", label="DataFrame 1"),
+        gr.outputs.Dataframe(type="pandas", label="DataFrame 2"),
+        gr.outputs.Dataframe(type="pandas", label="DataFrame 3")
+    ],
+    layout="vertical"  # This positions the outputs below the input
+)
+
+iface.launch()
+
+/====
+import feedparser
+import requests
+from bs4 import BeautifulSoup
+
+def parse_edgar_rss(url):
+    feed = feedparser.parse(url)
+    entries = []
+
+    for entry in feed.entries:
+        data = {
+            "title": entry.title,
+            "link": entry.link,
+            "summary": entry.summary,
+            "cik": entry.edgar_ciknumber,
+            "full_text": get_full_text(entry.link)
+        }
+        entries.append(data)
+
+    return entries
+
+def get_full_text(link):
+    response = requests.get(link)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    # Extracting the full text can be tricky as the structure might vary. 
+    # Here, we're just getting all the text, but you might need to adjust this.
+    return soup.get_text()
+
+# Example Usage
+rss_url = "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&CIK=&type=424B&company=&dateb=&owner=include&start=0&count=40&output=atom"
+entries = parse_edgar_rss(rss_url)
+
+for entry in entries:
+    print(f"Title: {entry['title']}")
+    print(f"Link: {entry['link']}")
+    print(f"Summary: {entry['summary']}")
+    print(f"CIK: {entry['cik']}")
+    print(f"Full Text: {entry['full_text'][:1000]}...")  # Printing only the first 1000 characters for brevity
+    print("--------------------------------------------------")
+
+/====
+from edgartools import *
+company=company("AAPL")
+df=company.get_facts().to_pandas()
+import numpy as np
+[x for x in np.unique(df.loc[df['namespace']=='us-gaap']['fact']) if "hedge" in x.lower()]
+/====
 import requests
 from bs4 import BeautifulSoup
 
