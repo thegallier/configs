@@ -3,8 +3,8 @@
 import streamlit as st
 import feedparser
 import pandas as pd
+import numpy as np
 
-# Dark mode theme
 st.set_page_config(
     page_title="Company Dashboard",
     layout="wide",
@@ -14,20 +14,19 @@ st.set_page_config(
 
 def get_rss_feed():
     # Using a placeholder RSS feed (BBC World)
-    # Replace with your desired RSS feed URL
     feed_url = "http://feeds.bbci.co.uk/news/world/rss.xml"
     feed = feedparser.parse(feed_url)
     entries = feed.entries[:5]
     return entries
 
-def display_feed():
+def display_feed(col):
     entries = get_rss_feed()
     for entry in entries:
-        st.write(f"**{entry.title}**")
-        st.write(entry.summary)
-        st.write("---")
+        col.write(f"**{entry.title}**")
+        col.write(entry.summary)
+        col.write("---")
 
-def display_company_info(company):
+def display_company_info(company, col):
     # Dummy data for demonstration
     if company == "company1":
         data = {
@@ -35,34 +34,52 @@ def display_company_info(company):
             "Role": ["Manager", "Engineer", "Analyst"]
         }
         df = pd.DataFrame(data)
-        st.write(df)
+        col.write(df)
     elif company == "company2":
         data = {
             "Product": ["Widget A", "Widget B"],
             "Price": [100, 150]
         }
         df = pd.DataFrame(data)
-        st.write(df)
+        col.write(df)
     elif company == "company3":
         data = {
             "Client": ["Client X", "Client Y", "Client Z"],
             "Revenue": [5000, 6000, 7000]
         }
         df = pd.DataFrame(data)
-        st.write(df)
+        col.write(df)
     else:
-        st.write("Select a company from the dropdown to view details.")
+        col.write("Select a company from the dropdown to view details.")
+
+def display_line_graph(col):
+    # Generating some dummy data for the line graph
+    dates = pd.date_range("20210101", periods=100)
+    values = np.random.randn(100).cumsum()
+
+    df_graph = pd.DataFrame({"Date": dates, "Value": values})
+    
+    col.line_chart(df_graph.set_index("Date"), use_container_width=True)
 
 def main():
     st.title("Company Dashboard")
 
     # Dropdown menu for company selection
     company = st.selectbox("Select a company:", ["", "company1", "company2", "company3"])
-    display_company_info(company)
 
-    # RSS Feed box
-    st.subheader("Latest News")
-    display_feed()
+    # Two column layout
+    col1, col2 = st.beta_columns(2)
+
+    # Display company info in the first column
+    display_company_info(company, col1)
+    
+    # Display line graph in the first column below company info
+    col1.subheader("Line Graph")
+    display_line_graph(col1)
+
+    # RSS Feed box in the second column
+    col2.subheader("Latest News")
+    display_feed(col2)
 
 if __name__ == "__main__":
     main()
