@@ -1,3 +1,82 @@
+# streamlit_app.py
+
+import streamlit as st
+import feedparser
+import pandas as pd
+
+# Dark mode theme
+st.set_page_config(
+    page_title="Company Dashboard",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+    page_icon=":bar_chart:"
+)
+
+def get_rss_feed():
+    # Using a placeholder RSS feed (BBC World)
+    # Replace with your desired RSS feed URL
+    feed_url = "http://feeds.bbci.co.uk/news/world/rss.xml"
+    feed = feedparser.parse(feed_url)
+    entries = feed.entries[:5]
+    return entries
+
+def display_feed():
+    entries = get_rss_feed()
+    for entry in entries:
+        st.write(f"**{entry.title}**")
+        st.write(entry.summary)
+        st.write("---")
+
+def display_company_info(company):
+    # Dummy data for demonstration
+    if company == "company1":
+        data = {
+            "Employee": ["Alice", "Bob", "Charlie"],
+            "Role": ["Manager", "Engineer", "Analyst"]
+        }
+        df = pd.DataFrame(data)
+        st.write(df)
+    elif company == "company2":
+        data = {
+            "Product": ["Widget A", "Widget B"],
+            "Price": [100, 150]
+        }
+        df = pd.DataFrame(data)
+        st.write(df)
+    elif company == "company3":
+        data = {
+            "Client": ["Client X", "Client Y", "Client Z"],
+            "Revenue": [5000, 6000, 7000]
+        }
+        df = pd.DataFrame(data)
+        st.write(df)
+    else:
+        st.write("Select a company from the dropdown to view details.")
+
+def main():
+    st.title("Company Dashboard")
+
+    # Dropdown menu for company selection
+    company = st.selectbox("Select a company:", ["", "company1", "company2", "company3"])
+    display_company_info(company)
+
+    # RSS Feed box
+    st.subheader("Latest News")
+    display_feed()
+
+if __name__ == "__main__":
+    main()
+
+/===
+~/.streamlit/config.toml
+[theme]
+primaryColor = "#f63366"
+backgroundColor = "#1f1f1f"
+secondaryBackgroundColor = "#31333F"
+textColor = "#fafafa"
+font = "sans-serif"
+
+/===
 import gradio as gr
 import pandas as pd
 
