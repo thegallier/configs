@@ -1,3 +1,27 @@
+# ... Your Streamlit code ...
+
+# Add a disclaimer at the bottom
+disclaimer = """
+    <style>
+        .footer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #f1f1f1;
+            text-align: center;
+            padding: 10px;
+        }
+    </style>
+    <div class="footer">
+        This is a sample disclaimer. Please consult with a professional before making any decisions based on this app.
+    </div>
+"""
+
+st.markdown(disclaimer, unsafe_allow_html=True)
+
+
+
 import re
 import pandas as pd
 from bs4 import BeautifulSoup
