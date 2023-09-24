@@ -1,3 +1,30 @@
+content = raw_10k
+soup = BeautifulSoup(content, 'lxml')
+contexts = soup.find_all('xbrli:context')
+dimensions=[]
+values=[]
+identifiers=[]
+context_ids=[]
+for context in contexts:
+    # Extract the identifier and period
+    identifier = context.find('xbrli:identifier').text
+    period = context.find('xbrli:period').text
+    
+    # Extract member data
+    members = context.find_all('xbrldi:explicitmember')
+    for member in members:
+        dimension = member.attrs.get('dimension')
+        value = member.text
+        dimensions.append(dimension)
+        values.append(value)
+        identifiers.append(identifier)
+   #     print(f"Identifier: {identifier}, Period: {period}, Dimension: {dimension}, Value: {value}")
+        if (dimension == 'us-gaap:FinancialInstrumentAxis') and (value == 'us-gaap:USGovernmentAgenciesDebtSecuritiesMember'):
+          print(f"{value} {member.text}")
+          context_id = context.attrs.get('id')
+          context_ids.append(context_id)
+
+/=====
 lauch.slurm
 #!/bin/bash
 #SBATCH --job-name=ift_llama
