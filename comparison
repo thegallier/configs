@@ -1,3 +1,5 @@
+pos_dat = test_df.groupby('item').nth(1).reset_index()
+
 items = [
     {"name": "item1", "entries": [{"start": 1, "end": 5}, {"start": 2, "end": 6}]},
     {"name": "item2", "entries": [{"start": 7, "end": 10}]},
