@@ -1,3 +1,27 @@
+items = [
+    {"name": "item1", "entries": [{"start": 1, "end": 5}, {"start": 2, "end": 6}]},
+    {"name": "item2", "entries": [{"start": 7, "end": 10}]},
+    {"name": "item3", "entries": [{"start": 6, "end": 8}, {"start": 9, "end": 11}]},
+    {"name": "item4", "entries": [{"start": 12, "end": 15}]},
+    {"name": "item5", "entries": [{"start": 11, "end": 13}, {"start": 14, "end": 16}]},
+]
+
+# Determine the maximum start value for each item
+for item in items:
+    item["max_start"] = max(entry["start"] for entry in item["entries"])
+
+# Sort the items based on the maximum start value
+sorted_items = sorted(items, key=lambda x: x["max_start"])
+
+# Find the last item where the maximum end value of its entries does not exceed the maximum start value of the next item
+result = None
+for i in range(len(sorted_items) - 1):
+    current_max_end = max(entry["end"] for entry in sorted_items[i]["entries"])
+    if current_max_end <= sorted_items[i + 1]["max_start"]:
+        result = sorted_items[i]
+
+print(result)
+
 # ... Your Streamlit code ...
 
 # Add a disclaimer at the bottom
