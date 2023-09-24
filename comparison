@@ -1,3 +1,4 @@
+# Sample list of items
 items = [
     {"name": "item1", "entries": [{"start": 1, "end": 5}, {"start": 2, "end": 6}]},
     {"name": "item2", "entries": [{"start": 7, "end": 10}]},
@@ -13,14 +14,23 @@ for item in items:
 # Sort the items based on the maximum start value
 sorted_items = sorted(items, key=lambda x: x["max_start"])
 
-# Find the last item where the maximum end value of its entries does not exceed the maximum start value of the next item
-result = None
+# Find the valid entry for each item based on the condition
+valid_entries = {}
 for i in range(len(sorted_items) - 1):
-    current_max_end = max(entry["end"] for entry in sorted_items[i]["entries"])
-    if current_max_end <= sorted_items[i + 1]["max_start"]:
-        result = sorted_items[i]
+    valid_entry = None
+    for entry in reversed(sorted_items[i]["entries"]):
+        if entry["end"] <= sorted_items[i + 1]["entries"][0]["start"]:
+            valid_entry = entry
+            break
+    if valid_entry:
+        valid_entries[sorted_items[i]["name"]] = valid_entry
 
-print(result)
+# For the last item, just take its last entry if it doesn't exceed the start of a potential next item
+if len(sorted_items) == len(items):
+    valid_entries[sorted_items[-1]["name"]] = sorted_items[-1]["entries"][-1]
+
+print(valid_entries)
+
 
 # ... Your Streamlit code ...
 
