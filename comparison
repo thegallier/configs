@@ -1,3 +1,51 @@
+from neo4j import GraphDatabase
+
+class Neo4jService:
+
+    def __init__(self, uri, user, password):
+        self._driver = GraphDatabase.driver(uri, auth=(user, password))
+
+    def close(self):
+        self._driver.close()
+
+    def add_function_and_relationships(self, function_name, related_functions, text_string):
+        with self._driver.session() as session:
+            session.write_transaction(self._create_or_update_function, function_name, text_string)
+            for related_function in related_functions:
+                session.write_transaction(self._create_or_update_relationship, function_name, related_function)
+
+    @staticmethod
+    def _create_or_update_function(tx, function_name, text_string):
+        # Create or merge the function node and add the code as a new example
+        query = """
+        MERGE (f:Code {name: $function_name})
+        ON CREATE SET f.examples = [$text_string]
+        ON MATCH SET f.examples = f.examples + $text_string
+        """
+        tx.run(query, function_name=function_name, text_string=text_string)
+
+    @staticmethod
+    def _create_or_update_relationship(tx, function_name, related_function):
+        # Create or merge the related function node and create the 'tests' relationship
+        query = """
+        MERGE (f1:Code {name: $function_name})
+        MERGE (f2:Code {name: $related_function})
+        MERGE (f1)-[:tests]->(f2)
+        """
+        tx.run(query, function_name=function_name, related_function=related_function)
+
+# Connect to Neo4j (replace with your connection details)
+neo4j_service = Neo4jService("bolt://localhost:7687", "neo4j", "your_password")
+
+# Add function, code, and relationships
+function_name = "myFunction"
+related_functions = ["relatedFunc1", "relatedFunc2"]
+text_string = "Example code for myFunction"
+neo4j_service.add_function_and_relationships(function_name, related_functions, text_string)
+
+neo4j_service.close()
+
+/===
 content = raw_10k
 soup = BeautifulSoup(content, 'lxml')
 contexts = soup.find_all('xbrli:context')
