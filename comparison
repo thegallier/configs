@@ -1,3 +1,43 @@
+from neo4j import GraphDatabase
+
+class Neo4jService(object):
+    def __init__(self, uri, user, password):
+        self._driver = GraphDatabase.driver(uri, auth=(user, password))
+
+    def close(self):
+        self._driver.close()
+
+    def insert_data_from_dataframe(self, df):
+        with self._driver.session() as session:
+            for index, row in df.iterrows():
+                session.run(
+                    """
+                    MERGE (c:managerName {name: $managerName})
+                    MERGE (p:companyName {name: $companyName})
+                    MERGE (cu:cusip {name: $cusip})
+                    MERGE (c)-[r:MANAGE {date: $reportCalendarOrQuarter}]->(p)
+                    MERGE (p)-[r2:WITH_CUSIP]->(cu)
+                    SET r.value = $value
+                    """,
+                    managerName=row['managerName'],
+                    companyName=row['companyName'],
+                    reportCalendarOrQuarter=row['reportCalendarOrQuarter'],
+                    value=row['value'],
+                    cusip=row['cusip']
+                )
+
+# Connect to Neo4j and insert data
+uri = NEO4J_URI
+user = "neo4j"
+password = NEO4J_PASSWORD
+neo4j_service = Neo4jService(uri, user, password)
+neo4j_service.insert_data_from_dataframe(df)
+neo4j_service.close()
+
+///
+
+
+
 parsing data
 
 graph2 = Neo4jGraph(
@@ -33,8 +73,34 @@ user = "neo4j"
 password = NEO4J_PASSWORD
 neo4j_service = Neo4jService(uri, user, password)
 neo4j_service.insert_data(reslist)
+
+
 neo4j_service.close()
 
+//batches
+
+def insert_in_batches(df, batch_size):
+    num_batches = len(df) // batch_size + (1 if len(df) % batch_size else 0)
+    
+    for i in range(num_batches):
+        start_index = i * batch_size
+        end_index = start_index + batch_size
+        batch = df[start_index:end_index]
+        
+        neo4j_service.insert_data_from_dataframe(batch)
+        print(f"Inserted batch {i + 1}/{num_batches}")
+
+///
+
+neo4j_service = Neo4jService(uri, user, password)
+
+# Define your batch size
+batch_size = 1000
+insert_in_batches(df, batch_size)
+
+neo4j_service.close()
+
+////
 
 
 def chunks(xs, n=10_000):
