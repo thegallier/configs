@@ -11,6 +11,14 @@ def chunks(xs, n=10_000):
     n = max(1, n)
     return [xs[i:i + n] for i in range(0, len(xs), n)]
 
+for record in chunks(reslist):
+  gds.query('''
+  UNWIND $records AS record
+  MERGE (c:Company {cusip: record.cusip})
+  SET c.companyName = record.companyName
+  RETURN count(c) AS company_node_merge_count
+  ''', params={'records':record})
+
 for d in chunks(reslist):
     res = gds.query('''
     UNWIND $records AS record
