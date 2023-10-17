@@ -1,3 +1,58 @@
+def convert_neo4j_schema_to_compressed_format(schema):
+  """Converts a Neo4j schema to a compressed format.
+
+  Args:
+    schema: A Neo4j schema, represented as a dictionary.
+
+  Returns:
+    A string representing the compressed schema.
+  """
+
+  compressed_schema = ""
+  for node_type in schema["nodes"]:
+    compressed_schema += f"{node_type}{{{schema['attributes'][node_type]}}}"
+    for relationship in schema["relationships"]:
+      if relationship["sourceLabel"] == node_type:
+        compressed_schema += f" - {relationship['type']} -> "
+      elif relationship["targetLabel"] == node_type:
+        compressed_schema += f" <- {relationship['type']} "
+    compressed_schema += "\n"
+  return compressed_schema
+
+
+# Example usage:
+
+schema = {
+  "nodes": ["Person", "Movie", "Character"],
+  "relationships": [
+    {
+      "type": "ACTED_IN",
+      "sourceLabel": "Person",
+      "targetLabel": "Movie"
+    },
+    {
+      "type": "PLAYED",
+      "sourceLabel": "Person",
+      "targetLabel": "Character"
+    },
+    {
+      "type": "APPEARS_IN",
+      "sourceLabel": "Character",
+      "targetLabel": "Movie"
+    }
+  ],
+  "attributes": {
+    "Person": ["name"],
+    "Movie": ["title", "release_year"],
+    "Character": ["name"]
+  }
+}
+
+compressed_schema = convert_neo4j_schema_to_compressed_format(schema)
+
+print(compressed_schema)
+
+/====
 from neo4j import GraphDatabase
 
 class Neo4jService(object):
