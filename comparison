@@ -1,3 +1,49 @@
+import neo4j
+
+def create_graph_in_neo4j_from_compressed_schema(compressed_schema):
+  """Creates a graph in Neo4j from an arbitrary compressed schema.
+
+  Args:
+    compressed_schema: A string representing the compressed schema.
+
+  Returns:
+    None
+  """
+
+  # Connect to the Neo4j database.
+  driver = neo4j.GraphDatabaseDriver("bolt://localhost:7687", auth=("neo4j", "neo4j"))
+
+  # Create a session.
+  session = driver.session()
+
+  # Create the nodes.
+  nodes, relationships = create_nodes_and_relationships_from_compressed_schema(
+      compressed_schema)
+
+  for node_type in nodes:
+    for node in nodes[node_type]:
+      node_query = "CREATE ({})".format(node_type)
+      for attribute_name, attribute_value in node.items():
+        node_query += f" {{{attribute_name}: '{attribute_value}'}}"
+      session.run(node_query)
+
+  # Create the relationships.
+  for relationship in relationships:
+    relationship_query = "CREATE ()-[:{}]->()".format(relationship["type"])
+    relationship_query += f" {{source: '{relationship['source']}', target: '{relationship['target']}'}}"
+    session.run(relationship_query)
+
+  # Close the session.
+  session.close()
+
+
+if __name__ == "__main__":
+  compressed_schema = convert_neo4j_schema_to_compressed_format(schema)
+
+  create_graph_in_neo4j_from_compressed_schema(compressed_schema)
+
+
+----
 def convert_neo4j_schema_to_compressed_format(schema):
   """Converts a Neo4j schema to a compressed format.
 
