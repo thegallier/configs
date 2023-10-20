@@ -1,3 +1,56 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+
+def fetch_etf_data():
+    # URL of the website to scrape data from
+    url = 'https://etfdb.com/etfs/asset-class/bond/'
+    
+    # Send a GET request
+    response = requests.get(url)
+    response.raise_for_status()
+
+    # Parse the HTML content using BeautifulSoup
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    # Find the table with the data
+    table = soup.find('table', class_='table')
+
+    # Extract the header and rows
+    headers = [th.text for th in table.findAll('th')]
+    rows = table.findAll('tr')[1:]
+
+    # Extract the data for each row
+    data = []
+    for row in rows:
+        cols = row.findAll('td')
+        row_data = [col.text.strip() for col in cols]
+        data.append(row_data)
+
+    # Convert the data into a pandas dataframe
+    df = pd.DataFrame(data, columns=headers)
+
+    # Filter out the columns we're interested in
+    desired_cols = [
+        'Symbol',
+        'ETF Name',
+        'Total Assets ($MM)',
+        'YTD',
+        'Avg Volume',
+        'Previous Closing Price',
+        '1-Day Change'
+    ]
+    df = df[desired_cols]
+    
+    return df
+
+df = fetch_etf_data()
+print(df.head())  # Print the first 5 rows of the dataframe
+/===
+
+
+
+
 [{'question': 'Which movies have the actor $actor?',
   'Cypher': 'MATCH (a:Actor) WHERE toLower(a.name) CONTAINS toLower($actor) MATCH (a)-[:ACTED_IN]->(m:Movie) RETURN m.name',
   'schema': 'Actor(name),Movie(name)'},
