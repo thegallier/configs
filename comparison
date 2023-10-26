@@ -1,3 +1,63 @@
+import pandas as pd
+import streamlit as st
+import matplotlib.pyplot as plt
+
+def calculate_change_in_amount_on_day(df):
+  """Calculates the change in amount on day for the given dataframe.
+
+  Args:
+    df: A Pandas DataFrame with the columns 'date', 'portfolio', 'sector',
+      'cusip', and 'amount'.
+
+  Returns:
+    A Pandas DataFrame with the columns 'date', 'portfolio', 'sector',
+      'cusip', and 'amount_change'.
+  """
+
+  df['amount_change'] = df.groupby(['portfolio', 'sector', 'cusip'])['amount'].diff(1)
+  return df
+
+def generate_barplot(df, portfolio, sector):
+  """Generates a barplot of the change in amount on day for the given dataframe,
+  filtered by portfolio and sector.
+
+  Args:
+    df: A Pandas DataFrame with the columns 'date', 'portfolio', 'sector',
+      'cusip', and 'amount_change'.
+    portfolio: The portfolio to filter the dataframe by.
+    sector: The sector to filter the dataframe by.
+
+  Returns:
+    A matplotlib Figure object.
+  """
+
+  fig, ax = plt.subplots()
+  df_filtered = df[(df['portfolio'] == portfolio) & (df['sector'] == sector)]
+  ax.bar(df_filtered['cusip'], df_filtered['amount_change'])
+  ax.set_xlabel('CUSIP')
+  ax.set_ylabel('Change in Amount on Day')
+  ax.set_title('Change in Amount on Day by CUSIP for {} ({})'.format(portfolio, sector))
+  return fig
+
+st.title('Change in Amount on Day by CUSIP')
+
+# Create a sidebar for the user to select the portfolio and sector.
+st.sidebar.header('Portfolio and Sector Selection')
+portfolio = st.sidebar.selectbox('Portfolio:', df['portfolio'].unique())
+sector = st.sidebar.selectbox('Sector:', df['sector'].unique())
+
+# Calculate the change in amount on day for the user selection.
+df_filtered = calculate_change_in_amount_on_day(df[(df['portfolio'] == portfolio) & (df['sector'] == sector)])
+
+# Generate the barplot.
+fig = generate_barplot(df_filtered, portfolio, sector)
+
+# Display the barplot.
+st.pyplot(fig)
+
+
+///
+
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
