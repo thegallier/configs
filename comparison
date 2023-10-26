@@ -1,3 +1,58 @@
+import gradio as gr
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Sample dataframe
+# You'd usually read this from a file: df = pd.read_csv('your_data.csv')
+data = {
+    'date': ['2023-10-24', '2023-10-25', '2023-10-24', '2023-10-25'],
+    'Symbol': ['AAPL', 'AAPL', 'GOOGL', 'GOOGL'],
+    'Sector': ['Tech', 'Tech', 'Tech', 'Tech'],
+    'Cusip': ['cusip1', 'cusip1', 'cusip2', 'cusip2'],
+    'amount': [100, 110, 150, 140]
+}
+df = pd.DataFrame(data)
+
+def plot_amount_change(portfolio, sector_selection):
+    # Filter dataframe based on selection
+    if sector_selection != 'All':
+        filtered_df = df[df['Sector'] == sector_selection]
+    else:
+        filtered_df = df.copy()
+
+    filtered_df = filtered_df[filtered_df['Symbol'] == portfolio]
+
+    # Calculate change in amount
+    filtered_df = filtered_df.sort_values(by='date')
+    filtered_df['amount_change'] = filtered_df.groupby(['Cusip'])['amount'].diff().fillna(0)
+
+    # Filter to only the latest date's changes
+    latest_date = filtered_df['date'].max()
+    filtered_df = filtered_df[filtered_df['date'] == latest_date]
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+    filtered_df.plot.bar(x='Cusip', y='amount_change', ax=ax)
+    plt.title(f"Amount Change on {latest_date} for {portfolio} in {sector_selection} Sector")
+    plt.ylabel("Change in Amount")
+    plt.tight_layout()
+    plt.close(fig)
+    return fig
+
+interface = gr.Interface(
+    fn=plot_amount_change,
+    inputs=[
+        gr.inputs.Dropdown(choices=df['Symbol'].unique().tolist(), label="Portfolio"),
+        gr.inputs.Dropdown(choices=['All'] + df['Sector'].unique().tolist(), label="Sector")
+    ],
+    outputs=gr.outputs.ImagePlot(label="Amount Change Barplot"),
+    live=True
+)
+interface.launch()
+
+
+------
+
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
