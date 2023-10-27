@@ -1,3 +1,47 @@
+import os
+import re
+import json
+
+def extract_context(text, word, context_size=15000):
+    matches = [match.start() for match in re.finditer(re.escape(word), text)]
+    contexts = []
+
+    for match in matches:
+        start = max(0, match - context_size)
+        end = min(len(text), match + context_size + len(word))
+        contexts.append(text[start:end])
+
+    return contexts
+
+def find_files(base_dir, word1, word2):
+    results = []
+
+    for dirpath, dirnames, filenames in os.walk(base_dir):
+        for filename in filenames:
+            if word1 in filename:
+                with open(os.path.join(dirpath, filename), 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                    if word2 in content:
+                        contexts = extract_context(content, word2)
+                        for context in contexts:
+                            results.append({
+                                'pathToFile': os.path.join(dirpath, filename),
+                                'context': context
+                            })
+
+    return results
+
+base_dir = '/path/to/start/directory'
+word1 = 'word1'
+word2 = 'word2'
+
+results = find_files(base_dir, word1, word2)
+
+# Output the results to a JSON file
+with open('output.json', 'w', encoding='utf-8') as f:
+    json.dump(results, f, ensure_ascii=False, indent=4)
+
+////
 import gradio as gr
 import pandas as pd
 import matplotlib.pyplot as plt
