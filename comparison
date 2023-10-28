@@ -1,3 +1,18 @@
+IEF
+
+import pandas as pd
+
+# Specify the path to the CSV file
+file_path = '/mnt/data/IEF_holdings.csv'
+
+# Read the 15 lines of data after the headers
+ief_holdings_section_df = pd.read_csv(file_path, skiprows=9, header=0, nrows=15)
+
+# (Optional) Display the extracted data to verify
+print(ief_holdings_section_df)
+
+
+///
 pom.xml
 
 <dependencies>
