@@ -1,3 +1,47 @@
+pom.xml
+
+<dependencies>
+    <dependency>
+        <groupId>org.neo4j.procedure</groupId>
+        <artifactId>neo4j-procedure-api</artifactId>
+        <version>your-neo4j-version</version>
+        <scope>provided</scope>
+    </dependency>
+    <!-- Add any other dependencies, like the kdb+/q Java client -->
+</dependencies>
+
+----
+
+package com.example;
+
+import org.neo4j.procedure.Description;
+import org.neo4j.procedure.Name;
+import org.neo4j.procedure.UserFunction;
+
+public class QFunction {
+
+    @UserFunction
+    @Description("com.example.callQ(query) - execute a q query and return result")
+    public String callQ(@Name("query") String qQuery) {
+        // Use the kdb+/q Java client to connect to your kdb+ instance
+        // Execute the qQuery
+        // Return the result or process as needed
+        // For simplicity, I'm returning a string. You can adapt as necessary.
+        
+        // Example:
+        String result = "Result from " + qQuery; // Replace this with actual kdb+/q call
+        return result;
+    }
+}
+
+mvn clean package
+
+restart neo4j
+
+RETURN com.example.callQ("your-q-query") AS result
+
+
+====
 import os
 import re
 import json
