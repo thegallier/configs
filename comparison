@@ -1,3 +1,73 @@
+//n-port
+
+import re
+import pandas as pd
+from xml.etree import ElementTree as ET
+
+# Function to find the namespace
+def find_namespace(root):
+    return re.match(r'\{.*\}', root.tag).group(0)[:-1]
+
+# Function to recursively search for elements containing keywords
+def find_derivative_info(element, namespaces):
+    derivatives_info = []
+    if any(keyword in element.tag.lower() for keyword in derivative_keywords):
+        derivatives_info.append(element)
+    else:
+        for attribute in element.attrib.values():
+            if any(keyword in attribute.lower() for keyword in derivative_keywords):
+                derivatives_info.append(element)
+                break
+    for child in element.findall('.//*', namespaces):
+        derivatives_info.extend(find_derivative_info(child, namespaces))
+    return derivatives_info
+
+# Function to extract relevant data from a derivative element
+def extract_derivative_data(element):
+    derivative_data = {
+        'Tag': element.tag,
+        'Text': element.text,
+        'Attributes': element.attrib
+    }
+    for child in element:
+        child_data = extract_derivative_data(child)
+        derivative_data[child.tag] = child_data
+    return derivative_data
+
+# Load and parse the XML file
+def parse_xml_to_csv(xml_file_path, csv_file_path):
+    # Load XML file
+    with open(xml_file_path, 'r') as file:
+        xml_content = file.read()
+
+    # Parse the XML content
+    tree = ET.ElementTree(ET.fromstring(xml_content))
+    root = tree.getroot()
+    namespaces = {'ns': find_namespace(root)}
+
+    # Keywords to search for in the XML elements and attributes
+    derivative_keywords = ['derivative', 'swap', 'option', 'future', 'forward', 'contract']
+
+    # Find all elements related to derivatives
+    derivatives_elements = find_derivative_info(root, namespaces)
+
+    # Extract data from all found derivative elements
+    derivatives_data = [extract_derivative_data(el) for el in derivatives_elements]
+
+    # Create a DataFrame from the extracted data
+    df_derivatives = pd.json_normalize(derivatives_data)
+
+    # Save the DataFrame to a CSV file
+    df_derivatives.to_csv(csv_file_path, index=False)
+
+# File paths
+xml_file_path = 'path_to_your_xml_file.xml'
+csv_file_path = 'path_to_your_output_csv_file.csv'
+
+# Parse XML and save to CSV
+parse_xml_to_csv(xml_file_path, csv_file_path)
+/==
+
 use_flash_attention=True
 model_name = "../meta-llama/Llama-2-70b-chat-hf" # use this if you have access to the official LLaMA 2 model "meta-llama/Llama-2-7b-chat-hf", though keep in mind you'll need to pass a Hugging Face key argument
 dataset_name = "./train.jsonl"
