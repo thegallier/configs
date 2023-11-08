@@ -1,3 +1,45 @@
+//counterparties
+import xml.etree.ElementTree as ET
+import json
+
+def extract_all_counterparties_including_duplicates(xml_file_path):
+    # Parse the XML file
+    tree = ET.parse(xml_file_path)
+    root = tree.getroot()
+
+    # Define the namespace used in the XML file
+    namespaces = {'nport': 'http://www.sec.gov/edgar/nport'}
+
+    # Create a list to hold all counterparty names, including duplicates
+    counterparty_names_list = []
+
+    # Find all counterpartyName elements and add their text to the list
+    for counterparty_name in root.findall('.//nport:counterpartyName', namespaces):
+        counterparty_names_list.append(counterparty_name.text)
+
+    return counterparty_names_list
+
+def save_to_json(data, json_file_path):
+    # Convert the list to JSON format
+    data_json = json.dumps(data, indent=2)
+
+    # Save the JSON to a file
+    with open(json_file_path, 'w') as file:
+        file.write(data_json)
+
+# Usage example
+xml_file_path = 'path_to_your_xml_file.xml'  # Replace with your XML file path
+json_file_path = 'path_to_your_output_file.json'  # Replace with your desired output file path
+
+# Extract all counterparty names including duplicates
+all_counterparties = extract_all_counterparties_including_duplicates(xml_file_path)
+
+# Save the list of all counterparties to a JSON file
+save_to_json(all_counterparties, json_file_path)
+
+# Now you have a JSON file with all the extracted counterparties
+
+
 //n-port
 
 import re
