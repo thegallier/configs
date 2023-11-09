@@ -1,4 +1,53 @@
 ///new
+from bs4 import BeautifulSoup
+
+def xml_to_dict(element):
+    if not isinstance(element, Tag):  # if the element is not a tag, return its string content
+        return element.strip() if element and element.strip() else None
+
+    # If the element is a tag and has no children, return its text
+    if element.name and not element.contents and not element.attrs:
+        return element.text.strip()
+
+    # Create a dictionary for the current element
+    tag_dict = {}
+    # Add attributes to the dictionary
+    tag_dict.update({k: v for k, v in element.attrs.items()})
+    
+    # Iterate over child elements and build the dictionary recursively
+    for child in element.children:
+        if isinstance(child, Tag):
+            child_dict = xml_to_dict(child)
+            # If a tag of the same name has been encountered before, convert it into a list
+            if child.name in tag_dict:
+                if not isinstance(tag_dict[child.name], list):
+                    tag_dict[child.name] = [tag_dict[child.name]]
+                tag_dict[child.name].append(child_dict)
+            else:
+                tag_dict[child.name] = child_dict
+        elif child.string and child.string.strip():
+            # If a tag contains only a string, add the string as a value
+            tag_dict[element.name] = child.string.strip()
+
+    return {element.name: tag_dict}
+
+# Parse your XML string with BeautifulSoup
+xml_content = """
+... (your XML content) ...
+"""
+soup = BeautifulSoup(xml_content, 'xml')
+
+# Find all 'derivativeinfo' elements
+derivative_infos = soup.find_all('derivativeinfo')
+
+# Convert each 'derivativeInfo' to a dictionary
+json_objects = [xml_to_dict(derivative_info) for derivative_info in derivative_infos]
+
+# If needed, convert dictionaries to JSON strings
+json_strings = [json.dumps(obj, indent=4) for obj in json_objects]
+
+# Now `json_strings` contains the JSON strings of the 'derivativeInfo' elements
+
 
 #import required libraries
 import pandas as pd
