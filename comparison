@@ -1,35 +1,61 @@
-///new
-from bs4 import BeautifulSoup
+//newnew
+from bs4 import BeautifulSoup, Tag
+import json
 
 def xml_to_dict(element):
-    if not isinstance(element, Tag):  # if the element is not a tag, return its string content
+    # Base case: if the element is a NavigableString, return its string content
+    if not isinstance(element, Tag):
         return element.strip() if element and element.strip() else None
 
-    # If the element is a tag and has no children, return its text
-    if element.name and not element.contents and not element.attrs:
-        return element.text.strip()
+    # If the tag is empty, return None or its text
+    if not element.attrs and not element.contents:
+        return element.text.strip() if element.text and element.text.strip() else None
 
-    # Create a dictionary for the current element
-    tag_dict = {}
-    # Add attributes to the dictionary
-    tag_dict.update({k: v for k, v in element.attrs.items()})
-    
-    # Iterate over child elements and build the dictionary recursively
-    for child in element.children:
+    # Create a dictionary to hold the element's attributes and children
+    tag_dict = element.attrs.copy()
+
+    # Add children to the dictionary
+    for child in element.contents:
         if isinstance(child, Tag):
-            child_dict = xml_to_dict(child)
-            # If a tag of the same name has been encountered before, convert it into a list
+            child_result = xml_to_dict(child)
+            # If a tag of the same name has been encountered before, create/update a list
             if child.name in tag_dict:
-                if not isinstance(tag_dict[child.name], list):
-                    tag_dict[child.name] = [tag_dict[child.name]]
-                tag_dict[child.name].append(child_dict)
+                if isinstance(tag_dict[child.name], list):
+                    tag_dict[child.name].append(child_result)
+                else:
+                    tag_dict[child.name] = [tag_dict[child.name], child_result]
             else:
-                tag_dict[child.name] = child_dict
-        elif child.string and child.string.strip():
-            # If a tag contains only a string, add the string as a value
-            tag_dict[element.name] = child.string.strip()
+                tag_dict[child.name] = child_result
+        else:  # Handle strings directly within the tag
+            text = child.strip()
+            if text:
+                tag_dict['text'] = text
 
-    return {element.name: tag_dict}
+    return tag_dict
+
+# Parse the XML content with BeautifulSoup
+xml_content = """
+... (your XML content) ...
+"""
+soup = BeautifulSoup(xml_content, 'xml')
+
+# Find all 'derivativeinfo' elements
+derivative_infos = soup.find_all('derivativeinfo')
+
+# Convert each 'derivativeInfo' to a dictionary
+json_objects = [xml_to_dict(derivative_info) for derivative_info in derivative_infos]
+
+# If needed, convert dictionaries to JSON strings
+json_strings = [json.dumps(obj, indent=4) for obj in json_objects]
+
+# Now `json_strings` contains the JSON strings of the 'derivativeInfo' elements
+
+
+
+///new
+
+from bs4 import BeautifulSoup
+
 
 # Parse your XML string with BeautifulSoup
 xml_content = """
