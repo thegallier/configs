@@ -1,3 +1,49 @@
+///new
+
+#import required libraries
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+import json
+
+url = 'https://www.sec.gov/Archives/edgar/data/1618627/000114554923004968/primary_doc.xml'
+url = 'https://www.sec.gov/Archives/edgar/data/844779/000175272421060799/primary_doc.xml'
+#set headers with a user-agent
+headers = {"User-agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.120 Safari/537.36"}    
+req =  requests.get(url, headers=headers)
+
+#define the columns you want to drop (based on the data in your question)
+to_drop = ['identifiers', 'curCd','valUSD','isRestrictedSec','fairValLevel','debtSec','securityLending'] #maybe 
+
+#the filing uses namespaces (too complicated to get into here), so you need to define that as well
+namespaces = {"nport": "http://www.sec.gov/edgar/nport"}
+
+#create the first df, for the securities which are debt instruments
+invest = pd.read_xml(req.text,xpath="//nport:invstOrSec[.//nport:debtSec]",namespaces=namespaces).drop(to_drop, axis=1)
+
+#crete the 2nd df, for the debt details:
+debt = pd.read_xml(req.text,xpath="//nport:debtSec",namespaces=namespaces).iloc[:,0:3]
+
+fwdDerivs = pd.read_xml(req.text,xpath="//nport:fwdDeriv",namespaces=namespaces) #don't think we use should use this
+swapDerivs = pd.read_xml(req.text,xpath="//nport:swapDeriv",namespaces=namespaces) #don't think we use should use this
+
+soup=BeautifulSoup(xml_data,parser='xml')
+# Assuming `soup` is your BeautifulSoup object initialized with your XML content
+invst_or_secs = soup.find_all('invstorsec')
+
+# List to hold JSON objects
+json_objects = []
+
+# Iterate over each 'invstOrSec' element
+for invst_or_sec in invst_or_secs:
+    # Check if 'derivativeInfo' is present
+    if invst_or_sec.find('derivativeinfo'):
+        # Convert the 'invstOrSec' to a dictionary and then to a JSON string
+        json_obj = json.dumps(xml_to_dict(invst_or_sec))
+        json_objects.append(json_obj)
+
+
+
 //counterparties
 import xml.etree.ElementTree as ET
 import json
