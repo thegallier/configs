@@ -1,3 +1,59 @@
+
+/====
+
+import torch
+from transformers import BitsAndBytesConfig
+from llama_index.prompts import PromptTemplate
+from llama_index.llms import HuggingFaceLLM
+
+quantization_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=torch.float16,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_use_double_quant=True,
+)
+
+
+llm = HuggingFaceLLM(
+    model_name="mistralai/Mistral-7B-Instruct-v0.1",
+    tokenizer_name="mistralai/Mistral-7B-Instruct-v0.1",
+    query_wrapper_prompt=PromptTemplate("<s>[INST] {query_str} [/INST] </s>\n"),
+    context_window=3900,
+    max_new_tokens=256,
+    model_kwargs={"quantization_config": quantization_config},
+    # tokenizer_kwargs={},
+    generate_kwargs={"temperature": 0.2, "top_k": 5, "top_p": 0.95},
+    device_map="auto",
+)
+
+from llama_index import ServiceContext
+
+from langchain.embeddings.huggingface import HuggingFaceBgeEmbeddings
+from llama_index import ServiceContext
+
+embed_model = HuggingFaceBgeEmbeddings(model_name="BAAI/bge-base-en")
+
+#service_context = ServiceContext.from_defaults(embed_model=embed_model,llm=llm)
+service_context = ServiceContext.from_defaults(embed_model="local",llm=llm)
+
+from llama_index import ServiceContext, set_global_service_context
+
+set_global_service_context(service_context)
+
+from llama_index.node_parser import (
+    UnstructuredElementNodeParser,
+)
+
+node_parser = UnstructuredElementNodeParser(llm=llm)
+
+raw_nodes_2021 = node_parser.get_nodes_from_documents(documents,llm=llm,embed_model="local")
+
+base_nodes_2021, node_mappings_2021 = node_parser.get_base_nodes_and_mappings(
+    raw_nodes_2021
+)
+
+/=====
+
 dpo
 
 def return_prompt_and_responses(samples) -> Dict[str, str, str]:
