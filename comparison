@@ -1,4 +1,20 @@
+import re
 
+text = "Your text goes here. This is a sample text. First target is here. Another sentence. Second target found here. And yet another one."
+
+# Define a list of target strings
+targets = ["First", "Second", "Third"]
+
+# Create a regex pattern that matches any of the target strings
+# The pattern will look for:
+# (1) a sentence ending before any target,
+# (2) the sentence containing any target,
+# (3) and the sentence following any target
+pattern = r"(\S.+\.\s)?\S.*?({}).*?\.\s(\S.+\.)?".format("|".join(map(re.escape, targets)))
+
+# Find and print all matches, case-insensitive
+for match in re.finditer(pattern, text, re.IGNORECASE):
+    print(match.group())
 /====
 
 import torch
