@@ -1,3 +1,97 @@
+
+model_name: str = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+api_key: str = hf_inference_api_key
+context_window: int = 4096
+num_output: int = 512
+
+/===
+
+
+import requests
+from llama_index.llms import (
+    CustomLLM,
+    CompletionResponse,
+    CompletionResponseGen,
+    LLMMetadata,
+)
+from llama_index.llms.base import llm_completion_callback
+from typing import Any
+
+
+class MixtralLLM(CustomLLM):
+    context_window: int = 4096
+    num_output: int = 512
+    model_name: str = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    api_key: str = hf_inference_api_key
+
+    @property
+    def metadata(self) -> LLMMetadata:
+        """Get LLM metadata."""
+        return LLMMetadata(
+            context_window=self.context_window,
+            num_output=self.num_output,
+            model_name=self.model_name,
+        )
+
+    def do_hf_call(self, prompt: str) -> str:
+        data = {
+            "inputs": prompt
+        }
+
+        response = requests.post(
+            'https://api-inference.huggingface.co/models/' + self.model_name,
+            headers={
+                'authorization': f'Bearer {self.api_key}',
+                'content-type': 'application/json',
+            },
+            json=data,
+            stream=True
+        )
+        if response.status_code != 200 or not response.json() or 'error' in response.json():
+            print(f"Error: {response}")
+            return "Unable to answer for technical reasons."
+        full_txt = response.json()[0]['generated_text']
+        offset = full_txt.find("---------------------")
+        ss = full_txt[offset:]
+        offset = ss.find("Answer:")
+        return ss[offset+7:].strip()
+
+    @llm_completion_callback()
+    def complete(self, prompt: str, **kwargs: Any) -> CompletionResponse:
+        response = self.do_hf_call(prompt)
+        return CompletionResponse(text=response)
+
+    @llm_completion_callback()
+    def stream_complete(
+            self, prompt: str, **kwargs: Any
+    ) -> CompletionResponseGen:
+        response = ""
+        for token in self.do_hf_call(prompt):
+            response += token
+            yield CompletionResponse(text=response, delta=token)
+
+
+mixtral_llm = MixtralLLM()
+
+==
+from llama_index.embeddings.jinaai import JinaEmbedding
+
+jina_embedding_model = JinaEmbedding(
+    api_key=jinaai_api_key,
+    model="jina-embeddings-v2-base-en",
+)
+
+from llama_index import VectorStoreIndex, ServiceContext
+
+service_context = ServiceContext.from_defaults(
+    llm=mixtral_llm, embed_model=jina_embedding_model
+)
+index = VectorStoreIndex.from_documents(
+    documents=docs, service_context=service_context
+)
+
+
+/===
 def parse_10k_filing(link, section):
 
     if section not in [0, 1, 2, 3]:
@@ -23,7 +117,8 @@ def parse_10k_filing(link, section):
             control = 0
             for e in ends:
                 if control == 0:
-                    if s < e:
+    
+if s < e:
                         control = 1
                         positions.append([s,e])
         item_length = 0
