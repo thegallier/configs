@@ -1,3 +1,5 @@
+text = "text 3.4/(5.6)"
+pattern = r'([^\d-]+)?-?\d+\.?\d*/\(-?\d+\.?\d*\)'
 
 model_name: str = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 api_key: str = hf_inference_api_key
