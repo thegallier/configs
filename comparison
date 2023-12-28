@@ -1,5 +1,31 @@
-text = "text 3.4/(5.6)"
-pattern = r'([^\d-]+)?-?\d+\.?\d*/\(-?\d+\.?\d*\)'
+import re
+
+def parse_string(input_str):
+    # Regular expression to match patterns
+    pattern = r'([A-Za-z]*\s*\d+\.\d+|\d+\.\d+|[A-Za-z]+)'
+
+    # Find all matches
+    matches = re.findall(pattern, input_str)
+
+    # Post-process matches to handle special cases
+    parsed = []
+    for match in matches:
+        # Remove unnecessary spaces and convert to float if it's a number
+        cleaned_match = match.strip()
+        try:
+            # Convert to float if possible
+            parsed.append(float(cleaned_match))
+        except ValueError:
+            # Keep as string if not a number
+            parsed.append(cleaned_match)
+
+    return parsed
+
+# Test the function
+print(parse_string("3.4/(5.6)")) # -> [3.4, 5.6]
+print(parse_string("3.4(SOFR)")) # -> [3.4, "SOFR"]
+print(parse_string("EUR 2.3/(USD 5.6)")) # -> ["EUR 2.3", "USD 5.6"]
+
 
 model_name: str = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 api_key: str = hf_inference_api_key
