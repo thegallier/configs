@@ -1,3 +1,52 @@
+from neo4j import GraphDatabase
+import pandas as pd
+
+# Example DataFrame
+df = pd.DataFrame({
+    'column1': ['value1', 'value2'],
+    'column2': ['value3', 'value4']
+})
+
+# Convert DataFrame to a dictionary
+data_as_dict = df.to_dict(orient='list')
+
+# Additional properties for relationships
+additional_properties = {
+    'additionalProperty1': 'value',
+    'additionalProperty2': 123
+}
+
+# Connect to Neo4j
+uri = "neo4j://localhost:7687"  # Replace with your Neo4j instance URI
+username = "neo4j"              # Replace with your username
+password = "password"           # Replace with your password
+driver = GraphDatabase.driver(uri, auth=(username, password))
+
+def add_data_and_relationships(tx, data, additional_props):
+    # Create node from DataFrame
+    create_node_query = """
+    CREATE (n:DataFrameNode {properties})
+    RETURN id(n) AS nodeId
+    """
+    result = tx.run(create_node_query, properties=data)
+    node_id = result.single()["nodeId"]
+
+    # Create relationships using additional properties
+    for key, value in additional_props.items():
+        create_rel_query = """
+        MATCH (n) WHERE id(n) = $nodeId
+        MATCH (m:OtherLabel) WHERE m.property = $propertyValue
+        CREATE (n)-[:RELATES_TO {propertyKey: $propertyKey}]->(m)
+        """
+        tx.run(create_rel_query, nodeId=node_id, propertyValue=value, propertyKey=key)
+
+# Upload data to Neo4j and create relationships
+with driver.session() as session:
+    session.write_transaction(add_data_and_relationships, data_as_dict, additional_properties)
+
+driver.close()
+
+/===
 import re
 
 def parse_string(input_str):
