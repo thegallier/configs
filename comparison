@@ -1,3 +1,42 @@
+config.json
+{
+  "architectures": [
+    "LlamaForCausalLM"
+  ],
+  "attention_bias": false,
+  "attention_dropout": 0.0,
+  "bos_token_id": 128000,
+  "eos_token_id": 128001,
+  "hidden_act": "silu",
+  "hidden_size": 4096,
+  "initializer_range": 0.02,
+  "intermediate_size": 14336,
+  "max_position_embeddings": 8192,
+  "model_type": "llama",
+  "num_attention_heads": 32,
+  "num_hidden_layers": 32,
+  "num_key_value_heads": 8,
+  "pretraining_tp": 1,
+  "rms_norm_eps": 1e-05,
+  "rope_scaling": null,
+  "rope_theta": 500000.0,
+  "tie_word_embeddings": false,
+  "torch_dtype": "bfloat16",
+  "transformers_version": "4.40.0.dev0",
+  "use_cache": true,
+  "vocab_size": 128256
+}
+
+generation_config.json
+
+{
+  "_from_model_config": true,
+  "bos_token_id": 128000,
+  "eos_token_id": [128001, 128009],
+  "transformers_version": "4.40.0.dev0"
+}
+
+
 
 from neo4j import GraphDatabase
 import pandas as pd
@@ -30,7 +69,10 @@ def add_data_and_relationships(tx, data, additional_props):
     RETURN id(n) AS nodeId
     """
     result = tx.run(create_node_query, properties=data)
-    node_id = result.single()["nodeId"]
+
+
+
+node_id = result.single()["nodeId"]
 
     # Create relationships using additional properties
     for key, value in additional_props.items():
