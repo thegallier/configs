@@ -1,3 +1,28 @@
+def get_llama3_chat_template():
+    return (
+        "<|begin_of_text|>"
+        "{% for message in messages %}"
+            "{% if message.role == 'system' %}"
+                "<|start_header_id|>system<|end_header_id|>"
+                "{{message.content}}"
+                "<|eot_id|>"
+            "{% endif %}"
+            "{% if message.role == 'user' %}"
+                "<|start_header_id|>user<|end_header_id|>"
+                "{{message.content}}"
+                "<|eot_id|>"
+            "{% endif %}"
+            "{% if message.role == 'assistant' %}"
+                "<|start_header_id|>assistant<|end_header_id|>"
+                "{{message.content}}"
+                "<|eot_id|>"
+            "{% endif %}"
+        "{% endfor %}"
+        "<|end_of_text|>"
+    )
+
+
+text	<|begin_of_text|><|start_header_id|>system<|end_header_id|>You are an AI assistant that provides information about the Calvin temperature scale.<|eot_id|><|start_header_id|>user<|end_header_id|>Can you provide a list of the classification ranges for the Calvin scale?<|eot_id|><|start_header_id|>assistant<|end_header_id|>The Calvin scale classification ranges are: - You've taken that too far: -inf°Ca to -2.0°Ca - Bloomin' Freezin': -2.0°Ca to 0.0°Ca - Freezin': 0.0°Ca to 1.0°Ca - Bloomin' Cold: 1.0°Ca to 2.0°Ca - A bit Cold: 2.0°Ca to 3.0°Ca - A wee bit nippy: 3.0°Ca to 4.0°Ca - Alright: 4.0°Ca to 5.0°Ca - Getting a bit Lovely: 5.0°Ca to 6.0°Ca - Lovely: 6.0°Ca to 7.0°Ca - Nice and Warm: 7.0°Ca to 8.0°Ca - Getting a bit Hot: 8.0°Ca to 9.0°Ca - Hot: 9.0°Ca to 10.0°Ca - Toasty: 10.0°Ca to 11.0°Ca - Roasty Toasty: 11.0°Ca to 12.0°Ca - Ridiculous: 12.0°Ca to inf°Ca<|eot_id|><|end_of_text|>
 
 config.json
 {
