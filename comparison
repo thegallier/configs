@@ -6,6 +6,61 @@ def parse_functions_and_dependencies_with_disk_reads(source_code):
     dependencies = []
     disk_reads = []
 
+    def extract_functions(node, parent_function=None):
+        for sub_node in ast.walk(node):
+            if isinstance(sub_node, ast.FunctionDef):
+                func_name = sub_node.name
+                if parent_function:
+                    func_name = f"{parent_function}.{func_name}"
+                args = [arg.arg for arg in sub_node.args.args]
+                outputs = []
+                for sub_sub_node in ast.walk(sub_node):
+                    if isinstance(sub_sub_node, ast.Return):
+                        if isinstance(sub_sub_node.value, ast.Tuple):
+                            outputs.extend([elt.id for elt in sub_sub_node.value.elts if isinstance(elt, ast.Name)])
+                        elif isinstance(sub_sub_node.value, ast.Name):
+                            outputs.append(sub_sub_node.value.id)
+                    if isinstance(sub_sub_node, ast.Call):
+                        if isinstance(sub_sub_node.func, ast.Name):
+                            dependencies.append((func_name, sub_sub_node.func.id))
+                        elif isinstance(sub_sub_node.func, ast.Attribute):
+                            dependencies.append((func_name, sub_sub_node.func.attr))
+                functions.append({
+                    'name': func_name,
+                    'args': args,
+                    'outputs': outputs,
+                })
+                extract_functions(sub_node, func_name)
+
+    # Extract top-level functions
+    extract_functions(tree)
+
+    # Identify objects read from disk
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    if isinstance(node.value, ast.Call):
+                        if hasattr(node.value.func, 'attr') and node.value.func.attr == 'read':
+                            disk_reads.append(target.id)
+                            break
+
+    return functions, dependencies, disk_reads
+
+# Example usage:
+with open('your_script.py', 'r') as file:
+    source_code = file.read()
+
+functions, dependencies, disk_reads = parse_functions_and_dependencies_with_disk_reads(source_code)
+/===
+import ast
+
+def parse_functions_and_dependencies_with_disk_reads(source_code):
+    tree = ast.parse(source_code)
+    functions = []
+    dependencies = []
+    disk_reads = []
+
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef):
             func_name = node.name
