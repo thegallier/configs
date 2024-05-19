@@ -1,5 +1,51 @@
 import ast
 
+def parse_functions_and_dependencies_with_disk_reads(source_code):
+    tree = ast.parse(source_code)
+    functions = []
+    dependencies = []
+    disk_reads = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            func_name = node.name
+            args = [arg.arg for arg in node.args.args]
+            outputs = []
+            for sub_node in ast.walk(node):
+                if isinstance(sub_node, ast.Return):
+                    if isinstance(sub_node.value, ast.Tuple):
+                        outputs.extend([elt.id for elt in sub_node.value.elts if isinstance(elt, ast.Name)])
+                    elif isinstance(sub_node.value, ast.Name):
+                        outputs.append(sub_node.value.id)
+            functions.append({
+                'name': func_name,
+                'args': args,
+                'outputs': outputs,
+            })
+            for call in [n for n in ast.walk(node) if isinstance(n, ast.Call)]:
+                if isinstance(call.func, ast.Name):
+                    dependencies.append((func_name, call.func.id))
+
+    # Identify objects read from disk
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    if isinstance(node.value, ast.Call):
+                        if hasattr(node.value.func, 'attr') and node.value.func.attr == 'read':
+                            disk_reads.append(target.id)
+                            break
+
+    return functions, dependencies, disk_reads
+
+# Example usage:
+with open('your_script.py', 'r') as file:
+    source_code = file.read()
+
+functions, dependencies, disk_reads = parse_functions_and_dependencies_with_disk_reads(source_code)
+//
+import ast
+
 def parse_functions_with_dependencies(source_code):
     tree = ast.parse(source_code)
     functions = []
