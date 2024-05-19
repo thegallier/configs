@@ -1,3 +1,45 @@
+# Extend the parsing to capture outputs (assuming outputs are returned variables)
+def parse_functions_with_outputs(source_code):
+    tree = ast.parse(source_code)
+    functions = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            output_vars = []
+            for sub_node in ast.walk(node):
+                if isinstance(sub_node, ast.Return):
+                    if isinstance(sub_node.value, ast.Tuple):
+                        output_vars.extend([elt.id for elt in sub_node.value.elts if isinstance(elt, ast.Name)])
+                    elif isinstance(sub_node.value, ast.Name):
+                        output_vars.append(sub_node.value.id)
+            functions.append({
+                'name': node.name,
+                'args': [arg.arg for arg in node.args.args],
+                'outputs': output_vars,
+                'body': ast.get_source_segment(source_code, node)
+            })
+    
+    return functions
+
+# Example usage:
+functions_with_outputs = parse_functions_with_outputs(source_code)
+
+# Creating relationships for outputs used as inputs
+for func in functions_with_outputs:
+    for output in func['outputs']:
+        neo4j_handler.create_argument_node(output)
+        neo4j_handler.create_relationship(func['name'], output)
+
+    for arg in func['args']:
+        for producing_func in functions_with_outputs:
+            if output in producing_func['outputs']:
+                neo4j_handler.create_relationship(producing_func['name'], arg)
+
+neo4j_handler.close()
+
+/=====
+
+
 def get_llama3_chat_template():
     return (
         "<|begin_of_text|>"
