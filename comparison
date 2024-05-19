@@ -7,7 +7,7 @@ def parse_functions_and_dependencies_with_disk_reads(source_code):
     disk_reads = []
 
     def extract_functions(node, parent_function=None):
-        for sub_node in ast.walk(node):
+        for sub_node in ast.iter_child_nodes(node):
             if isinstance(sub_node, ast.FunctionDef):
                 func_name = sub_node.name
                 if parent_function:
@@ -52,6 +52,145 @@ with open('your_script.py', 'r') as file:
     source_code = file.read()
 
 functions, dependencies, disk_reads = parse_functions_and_dependencies_with_disk_reads(source_code)
+
+/=====
+
+from neo4j import GraphDatabase
+
+class Neo4jHandler:
+    def __init__(self, uri, user, password):
+        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+    
+    def close(self):
+        self.driver.close()
+    
+    def create_function_node(self, function_name, args, outputs):
+        with self.driver.session() as session:
+            session.run(
+                "MERGE (f:Function {name: $function_name}) "
+                "SET f.args = $args, f.outputs = $outputs",
+                function_name=function_name, args=args, outputs=outputs
+            )
+    
+    def create_argument_node(self, argument_name):
+        with self.driver.session() as session:
+            session.run(
+                "MERGE (a:Argument {name: $argument_name})",
+                argument_name=argument_name
+            )
+    
+    def create_relationship(self, from_node, to_node, relationship_type):
+        with self.driver.session() as session:
+            session.run(
+                f"MATCH (a {{name: $from_node}}), (b {{name: $to_node}}) "
+                f"MERGE (a)-[:{relationship_type}]->(b)",
+                from_node=from_node, to_node=to_node
+            )
+
+# Example usage:
+neo4j_handler = Neo4jHandler("bolt://localhost:7687", "neo4j", "password")
+
+# Create function nodes and argument nodes
+for func in functions:
+    neo4j_handler.create_function_node(func['name'], func['args'], func['outputs'])
+    for arg in func['args']:
+        neo4j_handler.create_argument_node(arg)
+    for output in func['outputs']:
+        neo4j_handler.create_argument_node(output)
+
+# Create dependency relationships
+for dep in dependencies:
+    neo4j_handler.create_relationship(dep[1], dep[0], "DEPENDS_ON")
+
+# Create relationships between functions and their arguments
+for func in functions:
+    for arg in func['args']:
+        neo4j_handler.create_relationship(arg, func['name'], "USED_BY")
+    for output in func['outputs']:
+        neo4j_handler.create_relationship(func['name'], output, "PRODUCES")
+
+# Create nodes and relationships for objects read from disk
+for disk_read in disk_reads:
+    neo4j_handler.create_argument_node(disk_read)
+    for func in functions:
+        if disk_read in func['args']:
+            neo4j_handler.create_relationship(disk_read, func['name'], "READS_FROM_DISK")
+        if disk_read in func['outputs']:
+            neo4j_handler.create_relationship(func['name'], disk_read, "PRODUCES")
+
+neo4j_handler.close()
+
+/===
+# Example usage:
+with open('your_script.py', 'r') as file:
+    source_code = file.read()
+
+functions, dependencies, disk_reads = parse_functions_and_dependencies_with_disk_reads(source_code)
+/===
+from neo4j import GraphDatabase
+
+class Neo4jHandler:
+    def __init__(self, uri, user, password):
+        self.driver = GraphDatabase.driver(uri, auth=(user, password))
+    
+    def close(self):
+        self.driver.close()
+    
+    def create_function_node(self, function_name, args, outputs):
+        with self.driver.session() as session:
+            session.run(
+                "MERGE (f:Function {name: $function_name}) "
+                "SET f.args = $args, f.outputs = $outputs",
+                function_name=function_name, args=args, outputs=outputs
+            )
+    
+    def create_argument_node(self, argument_name):
+        with self.driver.session() as session:
+            session.run(
+                "MERGE (a:Argument {name: $argument_name})",
+                argument_name=argument_name
+            )
+    
+    def create_relationship(self, from_node, to_node, relationship_type):
+        with self.driver.session() as session:
+            session.run(
+                f"MATCH (a {{name: $from_node}}), (b {{name: $to_node}}) "
+                f"MERGE (a)-[:{relationship_type}]->(b)",
+                from_node=from_node, to_node=to_node
+            )
+
+# Example usage:
+neo4j_handler = Neo4jHandler("bolt://localhost:7687", "neo4j", "password")
+
+# Create function nodes and argument nodes
+for func in functions:
+    neo4j_handler.create_function_node(func['name'], func['args'], func['outputs'])
+    for arg in func['args']:
+        neo4j_handler.create_argument_node(arg)
+    for output in func['outputs']:
+        neo4j_handler.create_argument_node(output)
+
+# Create dependency relationships
+for dep in dependencies:
+    neo4j_handler.create_relationship(dep[1], dep[0], "DEPENDS_ON")
+
+# Create relationships between functions and their arguments
+for func in functions:
+    for arg in func['args']:
+        neo4j_handler.create_relationship(arg, func['name'], "USED_BY")
+    for output in func['outputs']:
+        neo4j_handler.create_relationship(func['name'], output, "PRODUCES")
+
+# Create nodes and relationships for objects read from disk
+for disk_read in disk_reads:
+    neo4j_handler.create_argument_node(disk_read)
+    for func in functions:
+        if disk_read in func['args']:
+            neo4j_handler.create_relationship(disk_read, func['name'], "READS_FROM_DISK")
+        if disk_read in func['outputs']:
+            neo4j_handler.create_relationship(func['name'], disk_read, "PRODUCES")
+
+neo4j_handler.close()
 /===
 import ast
 
