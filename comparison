@@ -1,3 +1,40 @@
+import ast
+
+def parse_functions_with_dependencies(source_code):
+    tree = ast.parse(source_code)
+    functions = []
+    dependencies = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            func_name = node.name
+            args = [arg.arg for arg in node.args.args]
+            outputs = []
+            for sub_node in ast.walk(node):
+                if isinstance(sub_node, ast.Return):
+                    if isinstance(sub_node.value, ast.Tuple):
+                        outputs.extend([elt.id for elt in sub_node.value.elts if isinstance(elt, ast.Name)])
+                    elif isinstance(sub_node.value, ast.Name):
+                        outputs.append(sub_node.value.id)
+            functions.append({
+                'name': func_name,
+                'args': args,
+                'outputs': outputs,
+            })
+            for call in [n for n in ast.walk(node) if isinstance(n, ast.Call)]:
+                if isinstance(call.func, ast.Name):
+                    dependencies.append((func_name, call.func.id))
+
+    return functions, dependencies
+
+# Example usage:
+with open('your_script.py', 'r') as file:
+    source_code = file.read()
+
+functions, dependencies = parse_functions_with_dependencies(source_code)
+
+/===
+
 # Extend the parsing to capture outputs (assuming outputs are returned variables)
 def parse_functions_with_outputs(source_code):
     tree = ast.parse(source_code)
