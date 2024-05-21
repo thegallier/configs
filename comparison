@@ -1,3 +1,30 @@
+from pyxlsb import open_workbook as open_xlsb
+import openpyxl
+
+def convert_xlsb_to_xlsx(xlsb_file_path, xlsx_file_path):
+    wb_xlsx = openpyxl.Workbook()
+    ws_xlsx = wb_xlsx.active
+
+    with open_xlsb(xlsb_file_path) as wb:
+        for sheetname in wb.sheets:
+            ws_xlsx = wb_xlsx.create_sheet(title=sheetname)
+            with wb.get_sheet(sheetname) as sheet:
+                for row in sheet.rows():
+                    ws_xlsx.append([item.v for item in row])
+
+    # Remove the default sheet created by openpyxl
+    if 'Sheet' in wb_xlsx.sheetnames:
+        wb_xlsx.remove(wb_xlsx['Sheet'])
+
+    wb_xlsx.save(xlsx_file_path)
+
+# Example usage
+xlsb_file_path = 'path_to_your_file.xlsb'
+xlsx_file_path = 'converted_file.xlsx'
+convert_xlsb_to_xlsx(xlsb_file_path, xlsx_file_path)
+
+
+
 import openpyxl
 import networkx as nx
 
