@@ -1,3 +1,44 @@
+import openpyxl
+import networkx as nx
+
+def extract_dependency_graph(file_path):
+    workbook = openpyxl.load_workbook(file_path, data_only=False)
+    dependency_graph = nx.DiGraph()
+
+    for sheet in workbook.sheetnames:
+        worksheet = workbook[sheet]
+        for row in worksheet.iter_rows():
+            for cell in row:
+                if cell.data_type == 'f':  # Check if the cell contains a formula
+                    formula = cell.value
+                    dependencies = extract_dependencies(formula, sheet)
+                    for dep in dependencies:
+                        dependency_graph.add_edge(dep, (sheet, cell.coordinate))
+
+    return dependency_graph
+
+def extract_dependencies(formula, current_sheet):
+    # Extract cell references from the formula
+    # This is a simplified example; you might need to handle more complex formulas
+    dependencies = []
+    tokens = formula.replace('=', '').replace('+', ' ').replace('-', ' ').replace('*', ' ').replace('/', ' ').split()
+    for token in tokens:
+        if '!' in token:
+            sheet, cell = token.split('!')
+            dependencies.append((sheet, cell))
+        else:
+            dependencies.append((current_sheet, token))
+    return dependencies
+
+# Example usage
+file_path = 'path_to_your_excel_file.xlsx'
+graph = extract_dependency_graph(file_path)
+
+# Print the edges of the dependency graph
+for edge in graph.edges:
+    print(edge)
+
+//
 import ast
 
 def parse_functions_and_dependencies_with_disk_reads(source_code):
