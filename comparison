@@ -1,4 +1,102 @@
+import streamlit as st
+import re
+import pickle
+from datetime import datetime
 
+# Simulate the reply function
+def replyFnc(user_input):
+    # This is a mock function. Replace with actual logic.
+    return {
+        "reply": f"This is a reply with dpExampleWord and a link to [Google](https://www.google.com).",
+        "relatedFunctions": [f"Related info for: {user_input}"],
+        "example": f"Example related to: {user_input}",
+        "description": f"Description related to: {user_input}"
+    }
+
+# Function to highlight specific words in a text
+def highlight_words(text):
+    pattern = r'\bdp[A-Z]\w*'
+    highlighted_text = re.sub(pattern, lambda x: f'<span style="color:red;">{x.group()}</span>', text)
+    return highlighted_text
+
+# Initialize the session state to store conversation history and feedback
+if 'conversation' not in st.session_state:
+    st.session_state.conversation = []
+
+if 'feedback' not in st.session_state:
+    st.session_state.feedback = []
+
+# Adjust the layout to make the sidebar wider
+st.set_page_config(layout="wide")
+
+# Layout containers
+sidebar_container = st.sidebar.container()
+main_container = st.container()
+
+# Sidebar for related info
+with sidebar_container:
+    st.header("Related Information")
+    related_info_placeholder = st.empty()
+    example_placeholder = st.empty()
+    description_placeholder = st.empty()
+    st.header("Feedback Collected")
+    st.write(st.session_state.feedback)
+
+# Main content
+with main_container:
+    st.title("Library Assistant")
+
+    # Input form for the user to type their message
+    with st.form(key='chat_form', clear_on_submit=True):
+        user_input = st.text_input("You: ", "")
+        submit_button = st.form_submit_button(label='Send')
+
+    if submit_button and user_input:
+        # Call the reply function
+        response = replyFnc(user_input)
+        # Update conversation history
+        st.session_state.conversation.append({"user": user_input, "bot": response["reply"]})
+        # Update related info in the sidebar
+        related_info_placeholder.write(response["relatedFunctions"])
+        example_placeholder.write(response["example"])
+        description_placeholder.write(response["description"])
+
+    # Feedback buttons and clear button
+    if st.session_state.conversation:
+        latest_idx = len(st.session_state.conversation) - 1
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            if st.button('👍', key=f"thumbsup_{latest_idx}"):
+                st.session_state.feedback.append({"index": latest_idx, "feedback": "thumbsup"})
+        with col2:
+            if st.button('👎', key=f"thumbsdown_{latest_idx}"):
+                st.session_state.feedback.append({"index": latest_idx, "feedback": "thumbsdown"})
+        with col3:
+            if st.button('❌', key=f"bad_{latest_idx}"):
+                st.session_state.feedback.append({"index": latest_idx, "feedback": "bad"})
+        with col4:
+            if st.button('Clear Messages'):
+                def clear_messages():
+                    data_to_save = {
+                        "conversation": st.session_state.conversation,
+                        "feedback": st.session_state.feedback
+                    }
+                    with open(f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl", 'wb') as f:
+                        pickle.dump(data_to_save, f)
+                    st.session_state.conversation = []
+                    st.session_state.feedback = []
+
+                clear_messages()
+
+    # Display the conversation history with scrolling
+    chat_container = st.container()
+    with chat_container:
+        for idx, chat in reversed(list(enumerate(st.session_state.conversation))):
+            st.write(f"You: {chat['user']}")
+            st.markdown(highlight_words(chat['bot']), unsafe_allow_html=True)
+
+
+/===
 import streamlit as st
 import re
 
