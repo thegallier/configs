@@ -1,3 +1,53 @@
+import json
+
+def replace_quotes_in_content(json_str):
+    # Parse the JSON string into Python objects
+    try:
+        data = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON: {e}")
+        return json_str
+    
+    # Define a recursive function to handle nested structures
+    def process_dict(d):
+        for key, value in d.items():
+            if isinstance(value, dict):
+                process_dict(value)
+            elif isinstance(value, list):
+                process_list(value)
+            elif key == "content" and isinstance(value, str):
+                # Replace " with ' within the content value
+                d[key] = value.replace('"', "'")
+    
+    def process_list(lst):
+        for item in lst:
+            if isinstance(item, dict):
+                process_dict(item)
+            elif isinstance(item, list):
+                process_list(item)
+    
+    # Start processing the top-level structure
+    if isinstance(data, dict):
+        process_dict(data)
+    elif isinstance(data, list):
+        process_list(data)
+    
+    # Serialize the modified objects back to a JSON string
+    return json.dumps(data, indent=4)
+
+# Example usage
+json_str = '''
+[
+    {"name": "example1", "content": "This is a \\"test\\" string with \\"quotes\\"."},
+    {"name": "example2", "content": "Another \\"example\\" here.", "nested": {"content": "Nested \\"content\\" with \\"quotes\\"."}},
+    {"name": "example3", "content": "Quotes in a \\"list\\": [\\"item1\\", \\"item2\\"]}
+]
+'''
+replaced_json_str = replace_quotes_in_content(json_str)
+print(replaced_json_str)
+
+
+===
 import streamlit as st
 import re
 import pickle
