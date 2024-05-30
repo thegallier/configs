@@ -1,39 +1,18 @@
-import json
+import re
 
 def replace_quotes_in_content(json_str):
-    # Parse the JSON string into Python objects
-    try:
-        data = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        print(f"Invalid JSON: {e}")
-        return json_str
+    # Define regex to match "content": "..." fields
+    content_pattern = re.compile(r'("content"\s*:\s*")([^"]*?)(")')
     
-    # Define a recursive function to handle nested structures
-    def process_dict(d):
-        for key, value in d.items():
-            if isinstance(value, dict):
-                process_dict(value)
-            elif isinstance(value, list):
-                process_list(value)
-            elif key == "content" and isinstance(value, str):
-                # Replace " with ' within the content value
-                d[key] = value.replace('"', "'")
+    # Replace quotes within the content value
+    def replace_inner_quotes(match):
+        content_value = match.group(2).replace('"', "'")
+        return f'{match.group(1)}{content_value}{match.group(3)}'
     
-    def process_list(lst):
-        for item in lst:
-            if isinstance(item, dict):
-                process_dict(item)
-            elif isinstance(item, list):
-                process_list(item)
+    # Apply the replacement to the entire JSON string
+    replaced_json_str = content_pattern.sub(replace_inner_quotes, json_str)
     
-    # Start processing the top-level structure
-    if isinstance(data, dict):
-        process_dict(data)
-    elif isinstance(data, list):
-        process_list(data)
-    
-    # Serialize the modified objects back to a JSON string
-    return json.dumps(data, indent=4)
+    return replaced_json_str
 
 # Example usage
 json_str = '''
@@ -43,6 +22,7 @@ json_str = '''
     {"name": "example3", "content": "Quotes in a \\"list\\": [\\"item1\\", \\"item2\\"]}
 ]
 '''
+
 replaced_json_str = replace_quotes_in_content(json_str)
 print(replaced_json_str)
 
