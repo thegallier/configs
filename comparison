@@ -1,18 +1,20 @@
 import re
 
-def replace_quotes_in_content(json_str):
-    # Define regex to match "content": "..." fields
-    content_pattern = re.compile(r'("content"\s*:\s*")([^"]*?)(")')
-    
-    # Replace quotes within the content value
-    def replace_inner_quotes(match):
-        content_value = match.group(2).replace('"', "'")
-        return f'{match.group(1)}{content_value}{match.group(3)}'
-    
-    # Apply the replacement to the entire JSON string
-    replaced_json_str = content_pattern.sub(replace_inner_quotes, json_str)
-    
-    return replaced_json_str
+def replace_single_word_quotes(json_str, exceptions):
+    # Function to replace quotes around single words not in the exceptions list
+    def replacement(match):
+        word = match.group(1)
+        if word in exceptions:
+            return f'"{word}"'
+        return f"'{word}'"
+
+    # Regex to match single words in double quotes outside of lists
+    pattern = re.compile(r'(?<!\[)\b"(\w+)"\b(?![\w\s]*\])')
+
+    # Replace matches with single quotes unless they are in the exceptions list
+    replaced_str = pattern.sub(replacement, json_str)
+
+    return replaced_str
 
 # Example usage
 json_str = '''
@@ -22,6 +24,22 @@ json_str = '''
     {"name": "example3", "content": "Quotes in a \\"list\\": [\\"item1\\", \\"item2\\"]}
 ]
 '''
+exceptions = ["name", "content"]
+
+replaced_json_str = replace_single_word_quotes(json_str, exceptions)
+print(replaced_json_str)
+In this script, the replacement function checks if the matched word is in the exceptions list. If it is, the quotes around the word are not changed; otherwise, the double quotes are replaced with single quotes. The regular expression pattern remains the same, ensuring that only standalone words outside of lists are processed.
+
+
+
+
+
+
+
+
+
+
+
 
 replaced_json_str = replace_quotes_in_content(json_str)
 print(replaced_json_str)
