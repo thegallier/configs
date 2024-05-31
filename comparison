@@ -1,20 +1,34 @@
 import re
 
-def replace_single_word_quotes(json_str, exceptions):
-    # Function to replace quotes around single words not in the exceptions list
-    def replacement(match):
-        word = match.group(1)
-        if word in exceptions:
-            return f'"{word}"'
-        return f"'{word}'"
+text = "prefix content first text role middle content second text role suffix"
+pattern = re.compile(r'(.*?)content(.*?)role')
 
-    # Regex to match single words in double quotes outside of lists
-    pattern = re.compile(r'(?<!\[)\b"(\w+)"\b(?![\w\s]*\])')
+# Start the initial search from the start of the text
+matches = list(re.finditer(pattern, text))
+results = []
 
-    # Replace matches with single quotes unless they are in the exceptions list
-    replaced_str = pattern.sub(replacement, json_str)
+for i in range(len(matches)):
+    if i < len(matches) - 1:
+        # Get the end of the current 'role'
+        end_current_match = matches[i].end()
+        # Start of the next 'content'
+        start_next_match = matches[i+1].start()
+        part1, part2 = matches[i].groups()
+        # Part 3 is the text between the end of the current 'role' and the start of the next 'content'
+        part3 = text[end_current_match:start_next_match]
+    else:
+        # For the last match, take everything after 'role'
+        part1, part2 = matches[i].groups()
+        part3 = text[matches[i].end():]
 
-    return replaced_str
+    results.append((part1, part2, part3))
+
+# Print results
+for part1, part2, part3 in results:
+    print("Part 1:", part1)
+    print("Part 2:", part2)
+    print("Part 3:", part3)
+    print("---")
 
 # Example usage
 json_str = '''
