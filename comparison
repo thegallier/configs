@@ -6,6 +6,73 @@ class DependencyVisitor(ast.NodeVisitor):
         self.current_function = None
 
     def visit_FunctionDef(self, node):
+        if node.name.startswith("dp"):
+            self.current_function = node.name
+            self.dependencies[self.current_function] = {'functions': [], 'variables': []}
+            self.generic_visit(node)
+            self.current_function = None
+        else:
+            self.generic_visit(node)
+
+    def visit_Call(self, node):
+        if self.current_function is not None:
+            if isinstance(node.func, ast.Name):
+                self.dependencies[self.current_function]['functions'].append(node.func.id)
+            elif isinstance(node.func, ast.Attribute):
+                self.dependencies[self.current_function]['functions'].append(node.func.attr)
+        self.generic_visit(node)
+
+    def visit_Name(self, node):
+        if self.current_function is not None and isinstance(node.ctx, ast.Load):
+            self.dependencies[self.current_function]['variables'].append(node.id)
+        self.generic_visit(node)
+
+def generate_dependency_graph(code):
+    tree = ast.parse(code)
+    visitor = DependencyVisitor()
+    visitor.visit(tree)
+    return visitor.dependencies
+
+# Example usage
+code = '''
+def dp_foo():
+    dp_bar()
+    x = 10
+    y = dp_baz(x)
+
+def dp_bar():
+    pass
+
+def dp_baz(a):
+    return a * 2
+
+def foo():
+    bar()
+    x = 10
+    y = baz(x)
+
+def bar():
+    pass
+
+def baz(a):
+    return a * 2
+'''
+
+dependencies = generate_dependency_graph(code)
+for func, deps in dependencies.items():
+    print(f"Function: {func}")
+    print(f"  Calls: {deps['functions']}")
+    print(f"  Variables: {deps['variables']}")
+
+/===
+import ast
+
+class DependencyVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.dependencies = {}
+        self.current_function = None
+
+    def visit_FunctionDef(self, node):
         self.current_function = node.name
         self.dependencies[self.current_function] = {'functions': [], 'variables': []}
         self.generic_visit(node)
