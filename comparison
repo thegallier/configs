@@ -1,3 +1,136 @@
+
+class HiPPOLayer(nn.Module):
+    def __init__(self, A, B):
+        super(HiPPOLayer, self).__init__()
+        self.A = A
+        self.B = B
+
+    def forward(self, x):
+        # x shape: (batch_size, seq_len, feature_dim)
+        batch_size, seq_len, feature_dim = x.size()
+        
+        # Initialize state
+        state = torch.zeros((batch_size, self.A.size(0), feature_dim), device=x.device)
+        
+        # Iterate through the sequence
+        for t in range(seq_len):
+            state = torch.matmul(self.A, state) + self.B * x[:, t, :].unsqueeze(1)
+        
+        return state
+
+
+class HiPPOTransformerModel(nn.Module):
+    def __init__(self, configs):
+        super(HiPPOTransformerModel, self).__init__()
+        self.seq_len = configs.seq_len
+        self.pred_len = configs.pred_len
+        self.output_attention = configs.output_attention
+        self.use_norm = configs.use_norm
+        self.enc_embedding = DataEmbedding_inverted(configs.seq_len, configs.d_model, configs.embed_dim, configs.dropout)
+        self.class_strategy = configs.class_strategy
+
+        self.encoder_layer = nn.TransformerEncoderLayer(d_model=configs.d_model, nhead=8)
+        self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=configs.e_layers)
+
+        self.projector = nn.Linear(configs.d_model, configs.output_size, bias=True)
+        
+        # HiPPO matrices
+        self.A = nn.Parameter(A_legS)
+        self.B = nn.Parameter(B_legS)
+        
+        # HiPPO layer
+        self.hippo_layer = HiPPOLayer(self.A, self.B)
+
+    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        if self.use_norm:
+            means = x_enc.mean(1, keepdim=True).detach()
+            x_enc = x_enc - means
+            stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
+            x_enc /= stdev
+
+        # Apply HiPPO layer
+        hippo_out = self.hippo_layer(x_enc)
+        
+        # Embed the HiPPO output
+        enc_out = self.enc_embedding(hippo_out, x_mark_enc)
+        enc_out = enc_out.permute(1, 0, 2)  # (L, N, E)
+        enc_out = self.encoder(enc_out)
+        enc_out = enc_out.permute(1, 0, 2)  # (N, L, E)
+        dec_out = self.projector(enc_out)  # Project to the target dimensions
+
+        if self.use_norm:
+            dec_out = dec_out * (stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
+            dec_out = dec_out + (means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
+
+        return dec_out
+
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+        dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+        return dec_out.permute(0, 2, 1)[:, :, :self.pred_len]  # [B, D, L]
+
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+
+# Specifications
+num_batches = 100
+seq_len = 100
+num_features = 25
+pred_len = 25
+output_features = 5
+group_size = 4
+column_group_size = 5
+
+# Generate input data
+x = np.zeros((num_batches, seq_len, num_features))
+for batch in range(num_batches):
+    for i in range(1, seq_len):
+        x[batch, i] = x[batch, i - 1] + 1
+
+# Generate target data
+y = np.zeros((num_batches, pred_len, output_features))
+for batch in range(num_batches):
+    for i in range(pred_len):
+        row_start = i * group_size
+        row_end = row_start + group_size
+        y[batch, i] = np.sum(np.mean(x[batch, row_start:row_end], axis=0).reshape(-1, column_group_size), axis=1)
+
+# Convert to torch tensors
+x = torch.tensor(x, dtype=torch.float32)
+y = torch.tensor(y, dtype=torch.float32)
+
+# Generate encoder and decoder marks (using random data for example purposes)
+x_mark_enc = torch.randn(num_batches, seq_len, num_features)
+x_mark_dec = torch.randn(num_batches, pred_len, output_features)
+
+# Create DataLoader
+dataset = TensorDataset(x, x_mark_enc, x_mark_dec, y)
+dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+
+# Initialize configurations
+configs = Configs()
+
+# Initialize the HiPPO-Transformer model
+model = HiPPOTransformerModel(configs)
+
+# Set up the optimizer and loss function
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+criterion = torch.nn.MSELoss()
+
+# Training loop
+for epoch in range(10):  # Number of epochs
+    for data, x_mark_enc, x_mark_dec, target in dataloader:
+        optimizer.zero_grad()
+        x_enc = data  # Encoder input
+        output = model(x_enc, x_mark_enc, x_enc, x_mark_dec)
+        loss = criterion(output, target)
+        loss.backward()
+        optimizer.step()
+    print(f'Epoch {epoch+1}, Loss: {loss.item()}')
+
+
+####
+
 import numpy as np
 import torch
 import torch.nn as nn
