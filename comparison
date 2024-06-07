@@ -1,3 +1,65 @@
+
+
+class Configs:
+    def __init__(self):
+        self.seq_len = seq_len  # Example sequence length
+        self.pred_len = pred_len  # Example prediction length
+        self.d_model = 512  # Model dimension
+        self.d_state = 64   # SSM state expansion factor
+        self.d_ff = 2048    # Feed-forward dimension
+        self.e_layers = 3   # Number of encoder layers
+        self.dropout = 0.1  # Dropout rate
+        self.activation = 'relu'
+        self.embed = num_features  # Embedding dimension
+        self.freq = 'h'  # Frequency
+        self.output_attention = False
+        self.use_norm = True
+        self.class_strategy = 'one'
+        self.output_size = output_features  # Number of output features
+
+/===
+
+import numpy as np
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+
+# Specifications
+num_batches = 100
+seq_len = 100
+num_features = 25
+pred_len = 25
+output_features = 5
+group_size = 4
+column_group_size = 5
+
+# Generate input data
+x = np.zeros((num_batches, seq_len, num_features))
+for batch in range(num_batches):
+    for i in range(1, seq_len):
+        x[batch, i] = x[batch, i - 1] + 1
+
+# Generate target data
+y = np.zeros((num_batches, pred_len, output_features))
+for batch in range(num_batches):
+    for i in range(pred_len):
+        row_start = i * group_size
+        row_end = row_start + group_size
+        y[batch, i] = np.sum(np.mean(x[batch, row_start:row_end], axis=0).reshape(-1, column_group_size), axis=1)
+
+# Convert to torch tensors
+x = torch.tensor(x, dtype=torch.float32)
+y = torch.tensor(y, dtype=torch.float32)
+
+# Generate encoder and decoder marks (using random data for example purposes)
+x_mark_enc = torch.randn(num_batches, seq_len, num_features)
+x_mark_dec = torch.randn(num_batches, pred_len, output_features)
+
+# Create DataLoader
+dataset = TensorDataset(x, x_mark_enc, x_mark_dec, y)
+dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+
+/====
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
