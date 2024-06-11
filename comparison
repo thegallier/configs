@@ -1,3 +1,55 @@
+import torch
+import torch.nn as nn
+
+class CustomLoss(nn.Module):
+    def __init__(self, class_weights):
+        super(CustomLoss, self).__init__()
+        self.criterion = nn.CrossEntropyLoss(weight=torch.tensor(class_weights, dtype=torch.float32))
+
+    def forward(self, outputs, targets):
+        batch_size = outputs.size(0)
+        num_outputs = outputs.size(1)
+        num_classes = outputs.size(2)
+        
+        # Reshape outputs to (batch_size * 31, 3)
+        outputs = outputs.view(batch_size * num_outputs, num_classes)
+        
+        # Reshape targets to (batch_size * 31)
+        targets = targets.view(batch_size * num_outputs)
+        
+        # Compute the loss
+        loss = self.criterion(outputs, targets)
+        
+        return loss
+
+# Example usage
+if __name__ == "__main__":
+    # Dummy data
+    batch_size = 4
+    num_outputs = 31
+    num_classes = 3
+    
+    # Random predictions (logits) from the model
+    outputs = torch.randn(batch_size, num_outputs, num_classes, requires_grad=True)
+    
+    # Random targets
+    targets = torch.randint(0, num_classes, (batch_size, num_outputs))
+    
+    # Example class counts (for demonstration)
+    class_counts = np.array([500, 100, 400])
+    total_samples = np.sum(class_counts)
+    class_weights = total_samples / (len(class_counts) * class_counts)
+    
+    # Instantiate the custom loss function with class weights
+    criterion = CustomLoss(class_weights)
+    
+    # Calculate the loss
+    loss = criterion(outputs, targets)
+    
+    print(f"Loss: {loss.item()}")
+
+
+
 class HiPPOLayer(nn.Module):
     def __init__(self, A, B):
         super(HiPPOLayer, self).__init__()
