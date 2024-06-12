@@ -1,3 +1,37 @@
+
+import re
+
+# Sample string
+text = "abCdef abGhi abJkl) some other words abMno abPqr) anotherAbC abXyz)"
+
+# Regular expression pattern
+pattern = r'\bab[A-Z][a-zA-Z]*[ \)]'
+
+# Find all matches
+matches = re.findall(pattern, text)
+
+# Clean up matches by removing trailing spaces or parentheses
+matches = [match.rstrip(' )') for match in matches]
+
+print(matches)
+
+++++
+import re
+
+# Sample string
+text = "This is a string containing htto123, htto_456, and other htto words."
+
+# Regular expression pattern
+pattern = r'htto\w*'
+
+# Find all matches
+matches = re.findall(pattern, text)
+
+print("Extracted substrings:", matches)
+
+
+++++
+
 import torch
 import torch.nn as nn
 
