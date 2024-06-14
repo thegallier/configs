@@ -1,26 +1,39 @@
-// Sample table
-t: flip `time`sym`price`qty!(`time$10:01:01 10:01:02 10:01:03 10:01:04 10:01:05 10:01:06; `AAPL`AAPL`AAPL`AAPL`GOOG`GOOG; 150 150 150 151 800 800; 100 100 100 100 50 50)
+import pandas as pd
 
-// Step 1: Remove the time column temporarily for comparison
-t_no_time: t @\: `time
+# Sample DataFrame
+data = {
+    'time': pd.to_datetime(['2021-01-01 10:00', '2021-01-01 10:01', '2021-01-01 10:02', '2021-01-01 10:03', '2021-01-01 10:04', '2021-01-01 10:05']),
+    'sym': ['AAPL', 'AAPL', 'AAPL', 'AAPL', 'GOOG', 'GOOG'],
+    'price': [150, 150, 150, 151, 800, 800],
+    'qty': [100, 100, 100, 100, 50, 50]
+}
+df = pd.DataFrame(data)
 
-// Step 2: Use deltas to identify changes; non-zero means a change occurred
-changes: any each deltas[t_no_time] <> 0
+# Step 1: Copy DataFrame without the 'time' column for comparison
+df_no_time = df.drop('time', axis=1)
 
-// Step 3: Generate a group id to identify groups of identical subsequent rows
-group_id: sums changes
+# Step 2: Use shift and compare to find changes (True if change)
+changes = (df_no_time != df_no_time.shift()).any(axis=1)
 
-// Step 4: Count occurrences within each group
-group_counts: select count i by group_id from t
+# Step 3: Create a group identifier for each set of consecutive rows
+df['group_id'] = changes.cumsum()
 
-// Step 5: Determine groups with counts >= 3 (or any other condition)
-large_groups: select from group_counts where count >= 3
+# Step 4: Count the size of each group
+group_sizes = df.groupby('group_id').size()
 
-// Step 6: Filter these groups to keep only the first entry
-first_entries: first each select from t where group_id in exec group_id from large_groups by group_id
+# Step 5: Filter groups by size and select the first occurrence
+filtered = df[df['group_id'].map(group_sizes) >= 3].groupby('group_id').head(1)
 
-// Step 7: Combine these with all entries from groups not in large_groups
-result: t where not group_id in exec group_id from large_groups, raze first_entries
+# Step 6: Combine with the rows from groups not meeting the filter criteria
+result = pd.concat([
+    df[df['group_id'].map(group_sizes) < 3],
+    filtered
+]).sort_index()
+
+print(result)
+
+/==
+roup_id in exec group_id from large_groups, raze first_entries
 
 result
 
