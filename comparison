@@ -24,6 +24,7 @@ result: t where not group_id in exec group_id from large_groups, raze first_entr
 
 result
 
+
 /==
 import re
 
