@@ -1,6 +1,75 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+
+# Define the Mamba Model
+class MambaModel(nn.Module):
+    def __init__(self, vocab_size1, vocab_size2, embedding_dim, hidden_dim):
+        super(MambaModel, self).__init__()
+        self.embedding1 = nn.Embedding(vocab_size1, embedding_dim)
+        self.embedding2 = nn.Embedding(vocab_size2, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim * 2, hidden_dim, batch_first=True)
+        self.fc_words1 = nn.Linear(hidden_dim, vocab_size1)
+        self.fc_words2 = nn.Linear(hidden_dim, vocab_size2)
+        self.fc_floats = nn.Linear(hidden_dim, 2)  # 2 floats output
+
+    def forward(self, x1, x2):
+        embedded1 = self.embedding1(x1)
+        embedded2 = self.embedding2(x2)
+        embedded = torch.cat((embedded1, embedded2), dim=2)
+        lstm_out, _ = self.lstm(embedded)
+        word_out1 = self.fc_words1(lstm_out[:, 0])
+        word_out2 = self.fc_words2(lstm_out[:, 1])
+        float_out = self.fc_floats(lstm_out[:, 2:])
+        return word_out1, word_out2, float_out
+
+# Create Data Loader
+class CustomDataset(Dataset):
+    def __init__(self, word_sequences1, word_sequences2, float_sequences):
+        self.word_sequences1 = word_sequences1
+        self.word_sequences2 = word_sequences2
+        self.float_sequences = float_sequences
+
+    def __len__(self):
+        return len(self.word_sequences1)
+
+    def __getitem__(self, idx):
+        return self.word_sequences1[idx], self.word_sequences2[idx], self.float_sequences[idx]
+
+word_sequences1 = [torch.tensor([1, 2]), torch.tensor([3, 4])]  # Example word indices for list 1
+word_sequences2 = [torch.tensor([5, 6]), torch.tensor([7, 8])]  # Example word indices for list 2
+float_sequences = [torch.tensor([1.0, 2.0]), torch.tensor([3.0, 4.0])]  # Example floats
+
+dataset = CustomDataset(word_sequences1, word_sequences2, float_sequences)
+data_loader = DataLoader(dataset, batch_size=2, shuffle=True)
+
+# Training the Model
+model = MambaModel(vocab_size1=10, vocab_size2=10, embedding_dim=16, hidden_dim=32)
+criterion_words1 = nn.CrossEntropyLoss()
+criterion_words2 = nn.CrossEntropyLoss()
+criterion_floats = nn.MSELoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+for epoch in range(100):
+    for word_seq1, word_seq2, float_seq in data_loader:
+        optimizer.zero_grad()
+        word_out1, word_out2, float_out = model(word_seq1, word_seq2)
+        
+        loss_words1 = criterion_words1(word_out1.view(-1, 10), word_seq1.view(-1))
+        loss_words2 = criterion_words2(word_out2.view(-1, 10), word_seq2.view(-1))
+        loss_floats = criterion_floats(float_out.view(-1, 2), float_seq.view(-1, 2))
+        loss = loss_words1 + loss_words2 + loss_floats
+        
+        loss.backward()
+        optimizer.step()
+        
+    print(f'Epoch {epoch+1}, Loss: {loss.item()}')
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 # Model definition
 class TimeSeriesNet(nn.Module):
