@@ -1,7 +1,41 @@
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from streamlit.script_runner import RerunException
+from streamlit.script_request_queue import RerunData
+
+class CaptureHeadersMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app):
+        super().__init__(app)
+        self.headers = {}
+
+    async def dispatch(self, request, call_next):
+        self.headers = dict(request.headers)
+        # Use session state to store headers so they can be accessed in Streamlit
+        if 'headers' not in st.session_state:
+            st.session_state['headers'] = self.headers
+        response = await call_next(request)
+        return response
+
+import streamlit as st
+from streamlit.server.server import Server
+
+# Normally, we'd attach middleware like this, but Streamlit does not expose `add_middleware` directly
+# This is a simplified example that does not work out of the box
+server = Server.get_current()
+server.add_middleware(CaptureHeadersMiddleware)
+
+import streamlit as st
+
+st.write("HTTP Headers:", st.session_state.get('headers', {}))
+
+
+/===
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
+
+
 
 # Define the Mamba Model
 class MambaModel(nn.Module):
@@ -19,9 +53,12 @@ class MambaModel(nn.Module):
         embedded2 = self.embedding2(x2)
         embedded = torch.cat((embedded1, embedded2), dim=2)
         lstm_out, _ = self.lstm(embedded)
-        word_out1 = self.fc_words1(lstm_out[:, 0])
+
+word_out1 = self.fc_words1(lstm_out[:, 0])
         word_out2 = self.fc_words2(lstm_out[:, 1])
-        float_out = self.fc_floats(lstm_out[:, 2:])
+    
+
+float_out = self.fc_floats(lstm_out[:, 2:])
         return word_out1, word_out2, float_out
 
 # Create Data Loader
