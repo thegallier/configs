@@ -1,4 +1,40 @@
 import gradio as gr
+
+# Define a simple authentication function
+def authenticate(username, password):
+    if username == "admin" and password == "password":
+        return True
+    else:
+        return False
+
+def submit_feedback(user, user_input, feedback):
+    # Assuming user is passed automatically from the authentication
+    return f"User {user} received '{feedback}' for: '{user_input}'"
+
+def setup_gradio():
+    with gr.Blocks(authenticate=authenticate) as demo:
+        with gr.Column():
+            user_input = gr.Textbox(label="Your Input", placeholder="Type something...")
+            with gr.Row():
+                feedback_buttons = gr.Radio(choices=["Thumbs Up", "Thumbs Down", "X"], label="Your Feedback", horizontal=True)
+                submit_button = gr.Button("Submit")
+        
+        output = gr.Textbox(label="Output", interactive=False)
+
+        submit_button.click(
+            fn=submit_feedback,
+            inputs=[gr.Auth(username_only=True), user_input, feedback_buttons],
+            outputs=output
+        )
+
+    return demo
+
+# Run the interface
+app = setup_gradio()
+app.launch()
+
+/====
+import gradio as gr
 import csv
 import os
 
