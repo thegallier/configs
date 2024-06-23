@@ -1,4 +1,49 @@
+import gradio as gr
+import csv
+import os
 
+# Feedback handling function
+def handle_feedback(username, question, feedback):
+    # Define the path for the CSV file
+    file_path = "feedback.csv"
+    # Check if the file exists and create it if it doesn't, with appropriate headers
+    if not os.path.exists(file_path):
+        with open(file_path, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Username", "Question", "Feedback"])
+
+    # Append the new feedback entry
+    with open(file_path, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([username, question, feedback])
+    
+    return f"Feedback received: {feedback}"
+
+# Create the Gradio interface
+def setup_gradio():
+    with gr.Blocks() as demo:
+        gr.Markdown("### Feedback Form")
+        username = gr.Textbox(label="Your Username")
+        question = gr.Textbox(label="Your Question")
+        feedback = gr.Radio(choices=["Thumbs Up", "Thumbs Down", "X"], label="Your Feedback")
+        submit_button = gr.Button("Submit Feedback")
+        output = gr.Textbox(label="Output", interactive=False)
+
+        submit_button.click(
+            fn=handle_feedback,
+            inputs=[username, question, feedback],
+            outputs=output
+        )
+
+    return demo
+
+# Run the interface
+app = setup_gradio()
+app.launch()
+
+
+
+/====
 from starlette.middleware.base import BaseHTTPMiddleware
 from streamlit.script_runner import RerunException
 from streamlit.script_request_queue import RerunData
