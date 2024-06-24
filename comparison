@@ -1,3 +1,266 @@
+def generateTestCases(functionDescription,functionName):
+  testcasesprompt="""
+  def test_longest_increasing_subsequence(fn):
+      test_cases = [
+          ([10, 22, 9, 33, 21, 50, 41, 60], 5),
+          ([7, 2, 1, 3, 8, 4, 9, 6, 5], 4),
+          ([5, 4, 3, 2, 1], 1),
+          ([1, 2, 3, 4, 5], 5),
+          ([3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5], 4),
+          ([10, 9, 2, 5, 3, 7, 101, 18], 4),
+          ([0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15], 6),
+          ([7, 7, 7, 7, 7, 7, 7], 1),
+          ([20, 25, 47, 35, 56, 68, 98, 101, 212, 301, 415, 500], 11),
+          ([9, 8, 7, 6, 5, 4, 3, 2, 1, 0], 1)
+      ]
+
+      passed_count = 0
+
+      for nums, expected in test_cases:
+          try:
+              assert fn(nums) == expected
+              passed_count += 1
+          except AssertionError:
+              print(f"Test case failed for input {nums}. Expected {expected}, but got {fn(nums)}")
+
+      return passed_count/len(test_cases)
+  """
+  res=enginebig(f"Below is a template of a testcase,  please create the same but for {functionName}.  This function {functionDescription}  Only return the python code.\n\TESTCASE\n"+testcasesprompt)
+  pattern = r'```(.*?)```'
+  matches = re.findall(pattern, res, re.DOTALL)
+  res2=matches[0]
+  return(res2)
+
+import os
+import logging
+from openai import OpenAI
+from textgrad.engine.openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
+
+
+class ChatExternalClient(ChatOpenAI):
+    """
+    This is the same as engine.openai.ChatOpenAI, but we pass in an external OpenAI client.
+    """
+
+    DEFAULT_SYSTEM_PROMPT = "You are a helpful, creative, and smart assistant."
+    client = None
+
+    def __init__(
+        self,
+        client: OpenAI,
+        model_string: str,
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+        **kwargs,
+    ):
+        """
+        :param client: an OpenAI client object.
+        :param model_string: the model name, used for the cache file name and chat completion requests.
+        :param system_prompt: the system prompt to use in chat completions.
+
+        Example usage with lm-studio local server, but any client that follows the OpenAI API will work.
+
+        ```python
+        from openai import OpenAI
+b       ```
+
+        """
+
+        if os.getenv("OPENAI_API_KEY") is None:
+            logger.warning("OPENAI_API_KEY not set. Setting it from client.")
+            os.environ["OPENAI_API_KEY"] = client.api_key
+
+        super().__init__(
+            model_string=model_string, system_prompt=system_prompt, **kwargs
+        )
+        self.client = client
+
+from openai import OpenAI
+client = OpenAI(base_url="https://api.groq.com/openai/v1", api_key="xyz")
+model_string='mixtral-8x7b-32768'
+model_string='llama3-8b-8192'
+engine = ChatExternalClient(client=client, model_string=model_string)
+print(engine.generate(max_tokens=2000, prompt="What is the meaning of life?"))
+
+enginebig = ChatExternalClient(client=client,model_string='llama3-70b-8192')
+llm_engine = enginebig # tg.get_engine("gpt-4o")
+tg.set_backward_engine(llm_engine)
+
+# Code is the variable of interest we want to optimize -- so requires_grad=True
+code = tg.Variable(value=initial_solution,
+                   requires_grad=True,
+                   role_description="code instance to optimize")
+
+# We are not interested in optimizing the problem -- so requires_grad=False
+problem = tg.Variable(problem_text, 
+                      requires_grad=False, 
+                      role_description="the coding problem")
+
+# Let TGD know to update code!
+optimizer = tg.TGD(parameters=[code])
+
+
+# The system prompt that will guide the behavior of the loss function.
+loss_system_prompt = "You are a smart language model that evaluates code snippets. You do not solve problems or propose new code snippets, only evaluate existing solutions critically and give very concise feedback."
+loss_system_prompt = tg.Variable(loss_system_prompt, requires_grad=False, role_description="system prompt to the loss function")
+
+# The instruction that will be the prefix
+instruction = """Think about the problem and the code snippet. Does the code solve the problem? What is the runtime complexity?"""
+
+# The format string and setting up the call
+format_string = "{instruction}\nProblem: {{problem}}\nCurrent Code: {{code}}"
+format_string = format_string.format(instruction=instruction)
+
+fields = {"problem": None, "code": None}
+formatted_llm_call = tg.autograd.FormattedLLMCall(engine=llm_engine,
+                                                  format_string=format_string,
+                                                  fields=fields,
+                                                  system_prompt=loss_system_prompt)
+
+# Finally, the loss function
+def loss_fn(problem: tg.Variable, code: tg.Variable) -> tg.Variable:
+    inputs = {"problem": problem, "code": code}
+    
+    return formatted_llm_call(inputs=inputs,
+                              response_role_description=f"evaluation of the {code.get_role_description()}")
+
+import re
+def rate_answer(question,answer):
+  prompt =  f"Question: {question}\n"+f"Answer: {answer}\n\n"
+  ratings="""As an expert on this topic, please analyse the answer and give a detailed CRITIQUE.  
+             Do not provide the answer.  
+             Give a RATING for the answer on a scale 0-5:
+               Give 1 point if the code looks correct
+               Give an additional point if the code is well written
+               Give one more point if the code is efficient
+               Give one more point for a docstring
+               Give one more point for good variable naming
+              Respond in JSON format: CRITIQUE: <critique>\nRATING: <rating>"""
+  prompt+=ratings
+  
+  rating_response = enginebig.generate((prompt),max_tokens=2000)
+  t8=run_function_in_interpreter(answer)
+  ratingtestcases=test_longest_increasing_subsequence(t8)
+  # Extract the rating
+  try:
+    pattern = r'"RATING":\s*(\d+)'
+    #match = re.search(r'RATING\s*(\d+)', rating_response)
+    match = re.search(pattern, rating_response)
+    if match:
+      rating = int (match.group (1))
+      if rating > 4:
+        rating = 4
+      rating = float (rating) / 5.
+    else:
+      raise ValueError("Rating not found in the response")
+    pattern = r'"CRITIQUE":\s*\n"(.*?)",\s*"RATING":\s*\d+'
+    match = re.search(pattern, rating_response)
+    if match:
+      critique=match.group(1)
+    else:
+      critique=rating_response
+  except Exception as e:
+      print(f"Error extracting rating: {e}")
+      print(f"Rating response was: {rating_response}")
+      rating = 0.0
+      critique=rating_response
+  # print(f"|nRating: (rating}")
+  return ratingtestcases*.5+rating*.5,critique
+
+
+def get_critique(question, draft_answer):
+    prompt= f"""QUESTION {question}\nANSWER {draft_answer}\n
+                Please provide a critique of the ANSWER for the QUESTION
+                Analyze the answer for correctness and efficiency
+                Give a step by step feedback and suggestions on a better approach.
+                Be specific enough to be implemented
+                Do NOT give the correct answer"""
+    return(enginebig(prompt))
+def improve_answer(question,draft_answer,critique):
+    prompt= f"""QUESTION {question}\nANSWER {draft_answer}\nCRITIQUE\n{critique}
+                Please impove the ANSWER for the QUESTION based on the CRITIQUE.  Only return python code
+                """
+    res=engine(prompt)
+    pattern = r'```(.*?)```'
+
+# Search for all matches of the pattern in the text
+    matches = re.findall(pattern, res, re.DOTALL)
+    res2=matches[0]
+    # print(res2)
+    return(res2)    
+
+from pickletools import read_string1
+class Node:
+    def __init__(self,question,answer,parent=None,max_children=3):
+        self.question=question
+        self.answer=answer
+        self.parent=parent
+        self.children=[]
+        self.visits=0
+        self.value = 0.0
+        self.max_children=max_children
+    def is_fully_expanded(self):
+        return len(self.children) >= self.max_children
+    def best_child(self, exploration_weight=1.41):
+        choices_weights=[]
+        for child in self.children:
+            if child.visits ==0:
+                weight= float('Inf')
+            else:
+                weight = (child.value/child.visits+exploration_weight*math.sqrt(2*self.max_children))
+            choices_weights.append(weight)
+        return self.children[np.argmax(choices_weights)]
+    def most_visited_child(self):
+        return max(self.children,key=lambda child:child.visits)
+    def add_child(self,child_node):
+        self.children.append(child_node)
+
+seed_answers=["I don't know","Maybe right","Possibly wrong"]
+
+class MCTS:
+  def __init__(self,question,seed_answers,iterations=2):
+    self.question=  question
+    self.seed_answers = seed_answers
+    self.iterations = iterations
+    self.root = Node(question,random.choice(seed_answers))
+  def search(self):
+    for i in range(self.iterations):
+      node = self.select(self.root)
+      if not node.is_fully_expanded():
+        node = self.expand(node)
+      reward = self.simulate(node)
+      self.backpropagate(node,reward)
+    return self.root.most_visited_child().answer
+  def select(self,node):
+    while node.is_fully_expanded() and node.children:
+      node = node.best_child()
+    return node
+  def expand(self,node):
+    for j in range(node.max_children-len(node.children)):
+      child_node = Node(self.question,node.answer,parent=node)
+      node.add_child(child_node)
+      critique=get_critique(self.question,child_node.answer)
+      improved_answer=improve_answer(self.question,child_node.answer,critique)
+      child_node.answer=improved_answer
+    return random.choice(node.children)
+  def simulate(self,node):
+    rating,_ = rate_answer(self.question,node.answer)
+    return rating
+
+  def backpropagate(self,node,reward):
+    while node is not None:
+      node.visits += 1
+      node.value += reward
+      node = node.parent
+
+import math
+import numpy as np
+question="Write a python program that finds the largest number of increasing bumbers in a sublist an returns that value.  Only return the python code"
+mcts=MCTS(question,seed_answers,iterations=5)
+mctsres=(mcts.search().replace("```",""))
+
+/--
 import gradio as gr
 
 # Define a simple authentication function
