@@ -1,3 +1,96 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+
+# Step 2: Prepare Your Vocabulary and Data
+vocab = ['<PAD>', '<SOS>', '<EOS>', 'hello', 'world', 'how', 'are', 'you']
+word_to_ix = {word: i for i, word in enumerate(vocab)}
+ix_to_word = {i: word for i, word in enumerate(vocab)}
+
+# Example sentences
+sentences = [['<SOS>', 'hello', 'world', '<EOS>'],
+             ['<SOS>', 'how', 'are', 'you', '<EOS>']]
+
+# Convert sentences to indices
+def sentence_to_indices(sentence, word_to_ix):
+    return [word_to_ix[word] for word in sentence]
+
+data = [sentence_to_indices(sentence, word_to_ix) for sentence in sentences]
+
+# Step 3: Define the Model
+class SimpleLSTM(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim):
+        super(SimpleLSTM, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+    
+    def forward(self, x, hidden):
+        embedded = self.embedding(x)
+        output, hidden = self.lstm(embedded, hidden)
+        output = self.fc(output)
+        return output, hidden
+
+    def init_hidden(self, batch_size):
+        weight = next(self.parameters()).data
+        hidden = (weight.new(1, batch_size, hidden_dim).zero_(),
+                  weight.new(1, batch_size, hidden_dim).zero_())
+        return hidden
+
+# Hyperparameters
+embedding_dim = 10
+hidden_dim = 20
+output_dim = len(vocab)
+
+model = SimpleLSTM(len(vocab), embedding_dim, hidden_dim, output_dim)
+
+# Step 4: Define Loss Function and Optimizer
+loss_function = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.01)
+
+# Step 5: Train the Model
+epochs = 100
+
+for epoch in range(epochs):
+    total_loss = 0
+    for sentence in data:
+        inputs = torch.tensor(sentence[:-1], dtype=torch.long).unsqueeze(0)
+        targets = torch.tensor(sentence[1:], dtype=torch.long).unsqueeze(0)
+
+        hidden = model.init_hidden(inputs.size(0))
+
+        model.zero_grad()
+        output, hidden = model(inputs, hidden)
+        loss = loss_function(output.view(-1, len(vocab)), targets.view(-1))
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    
+    if epoch % 10 == 0:
+        print(f'Epoch: {epoch}, Loss: {total_loss/len(data)}')
+
+# Step 6: Generate Sentences
+def generate_sentence(model, start_token, max_length):
+    model.eval()
+    indices = [word_to_ix[start_token]]
+    current_input = torch.tensor([indices], dtype=torch.long)
+    hidden = model.init_hidden(current_input.size(0))
+    
+    for _ in range(max_length):
+        output, hidden = model(current_input, hidden)
+        next_token = torch.argmax(output[0, -1, :]).item()
+        indices.append(next_token)
+        current_input = torch.tensor([indices[-1:]], dtype=torch.long)
+        
+        if next_token == word_to_ix['<EOS>']:
+            break
+    
+    return ' '.join([ix_to_word[idx] for idx in indices])
+
+print(generate_sentence(model, '<SOS>', 10))
+
+/======
 """
 The gradio demo server for chatting with a single model.
 """
@@ -528,7 +621,7 @@ def bot_response(
         yield (state, state.to_gradio_chatbot()) + (
             disable_btn,
             disable_btn,
-            disable_btn,
+            disable_btn, l .
             enable_btn,
             enable_btn,
         )
