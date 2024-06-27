@@ -1,3 +1,140 @@
+import streamlit as st
+import time
+import json
+from datetime import datetime
+
+# Mock functions (replace these with actual implementations)
+def verify_credentials(username, password):
+    with open('auth.txt', 'r') as f:
+        for line in f:
+            user, pwd = line.strip().split(':')
+            if user == username and pwd == password:
+                return True
+    return False
+
+def replyFunction(prompt):
+    # Mock streaming reply
+    for word in f"This is a mock reply to: {prompt}".split():
+        yield word + " "
+        time.sleep(0.1)
+
+def relatedFunctions():
+    return [
+        {"name": "Documentation", "url": "https://docs.example.com"},
+        {"name": "API Reference", "url": "https://api.example.com"},
+        {"name": "Tutorials", "url": "https://tutorials.example.com"},
+        {"name": "Community", "url": "https://community.example.com"},
+        {"name": "Support", "url": "https://support.example.com"}
+    ]
+
+# Set page config
+st.set_page_config(page_title="Mesop Demo Chat", layout="wide")
+
+# Custom CSS
+st.markdown("""
+<style>
+    .stTextInput {
+        padding: 10px;
+    }
+    .user-message {
+        background-color: #f0f0f0;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+    }
+    .bot-message {
+        background-color: #e6f3ff;
+        padding: 10px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        margin-left: 20px;
+    }
+    .feedback-button {
+        margin-right: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Login page
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+
+if not st.session_state.logged_in:
+    st.title("Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        if verify_credentials(username, password):
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.experimental_rerun()
+        else:
+            st.error("Invalid credentials")
+
+# Main chat interface
+if st.session_state.logged_in:
+    # Sidebar with related links
+    with st.sidebar:
+        st.title("Related Links")
+        for item in relatedFunctions():
+            st.markdown(f"[{item['name']}]({item['url']})")
+
+    # Main chat area
+    st.title("Mesop Demo Chat")
+
+    # Initialize chat history
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+
+    # Display chat messages
+    for message in st.session_state.messages:
+        if message['role'] == 'user':
+            st.markdown(f"<div class='user-message'>{message['content']}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='bot-message'>{message['content']}</div>", unsafe_allow_html=True)
+
+    # Chat input
+    user_input = st.text_input("Enter your prompt", key="user_input")
+
+    if st.button("Send"):
+        if user_input:
+            # Add user message to chat history
+            st.session_state.messages.append({"role": "user", "content": user_input})
+
+            # Get bot reply
+            bot_reply = ""
+            message_placeholder = st.empty()
+            for chunk in replyFunction(user_input):
+                bot_reply += chunk
+                message_placeholder.markdown(f"<div class='bot-message'>{bot_reply}</div>", unsafe_allow_html=True)
+
+            # Add bot message to chat history
+            st.session_state.messages.append({"role": "assistant", "content": bot_reply})
+
+            # Feedback buttons
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("👍", key="thumbs_up"):
+                    feedback = "positive"
+            with col2:
+                if st.button("👎", key="thumbs_down"):
+                    feedback = "negative"
+            with col3:
+                if st.button("❌", key="cancel"):
+                    feedback = "cancel"
+
+            # Save feedback
+            if 'feedback' in locals():
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                with open('feedback.txt', 'a') as f:
+                    f.write(f"{timestamp} | {st.session_state.username} | {feedback}\n")
+
+    # Clear chat button
+    if st.button("Clear Chat"):
+        st.session_state.messages = []
+        st.experimental_rerun()
+
+/====
 import torch
 import torch.nn as nn
 import torch.optim as optim
