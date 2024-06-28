@@ -1,0 +1,579 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+
+# Step 2: Prepare Your Vocabulary and Data
+vocab = ['<PAD>', '<SOS>', '<EOS>', 'hello', 'world', 'how', 'are', 'you']
+word_to_ix = {word: i for i, word in enumerate(vocab)}
+ix_to_word = {i: word for i, word in enumerate(vocab)}
+
+# Example sentences
+sentences = [['<SOS>', 'hello', 'world', '<EOS>'],
+             ['<SOS>', 'how', 'are', 'you', '<EOS>']]
+
+# Convert sentences to indices
+def sentence_to_indices(sentence, word_to_ix):
+    return [word_to_ix[word] for word in sentence]
+
+data = [sentence_to_indices(sentence, word_to_ix) for sentence in sentences]
+
+# Step 3: Define the RNN Model
+class SimpleRNN(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim):
+        super(SimpleRNN, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+    
+    def forward(self, x, hidden):
+        embedded = self.embedding(x)
+        output, hidden = self.rnn(embedded, hidden)
+        output = self.fc(output)
+        return output, hidden
+
+    def init_hidden(self, batch_size):
+        weight = next(self.parameters()).data
+        hidden = weight.new(1, batch_size, hidden_dim).zero_()
+        return hidden
+
+# Hyperparameters
+embedding_dim = 10
+hidden_dim = 20
+output_dim = len(vocab)
+
+model = SimpleRNN(len(vocab), embedding_dim, hidden_dim, output_dim).to("cuda")
+
+# Step 4: Define Loss Function and Optimizer
+loss_function = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Step 5: Train the Model
+epochs = 100
+
+for epoch in range(epochs):
+    total_loss = 0
+    for sentence in data:
+        inputs = torch.tensor(sentence[:-1], dtype=torch.long).unsqueeze(0).to("cuda")
+        targets = torch.tensor(sentence[1:], dtype=torch.long).unsqueeze(0).to("cuda")
+
+        hidden = model.init_hidden(inputs.size(0))
+
+        model.zero_grad()
+        output, hidden = model(inputs, hidden)
+        loss = loss_function(output.view(-1, len(vocab)), targets.view(-1))
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    
+    if epoch % 10 == 0:
+        print(f'Epoch: {epoch}, Loss: {total_loss/len(data)}')
+
+# Step 6: Generate Sentences
+def generate_sentence(model, start_token, max_length):
+    model.eval()
+    indices = [word_to_ix[start_token]]
+    current_input = torch.tensor([indices], dtype=torch.long).to("cuda")
+    hidden = model.init_hidden(current_input.size(0))
+    
+    for _ in range(max_length):
+        output, hidden = model(current_input, hidden)
+        next_token = torch.argmax(output[0, -1, :]).item()
+        indices.append(next_token)
+        current_input = torch.tensor([indices[-1:]], dtype=torch.long).to("cuda")
+        
+        if next_token == word_to_ix['<EOS>']:
+            break
+    
+    return ' '.join([ix_to_word[idx] for idx in indices])
+
+print(generate_sentence(model, '<SOS>', 10))
+
+/==
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+from mamba_ssm import Mamba
+
+# Step 2: Prepare Your Vocabulary and Data
+vocab = ['<PAD>', '<SOS>', '<EOS>', 'hello', 'world', 'how', 'are', 'you']
+word_to_ix = {word: i for i, word in enumerate(vocab)}
+ix_to_word = {i: word for i, word in enumerate(vocab)}
+
+# Example sentences
+sentences = [['<SOS>', 'hello', 'world', '<EOS>'],
+             ['<SOS>', 'how', 'are', 'you', '<EOS>']]
+
+# Convert sentences to indices
+def sentence_to_indices(sentence, word_to_ix):
+    return [word_to_ix[word] for word in sentence]
+
+data = [sentence_to_indices(sentence, word_to_ix) for sentence in sentences]
+
+# Step 3: Define the Mamba Model
+class MambaModel(nn.Module):
+    def __init__(self, vocab_size, d_model, d_state, d_conv, expand):
+        super(MambaModel, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.mamba = Mamba(d_model=d_model, d_state=d_state, d_conv=d_conv, expand=expand)
+        self.fc = nn.Linear(d_model, vocab_size)
+    
+    def forward(self, x):
+        embedded = self.embedding(x)
+        output = self.mamba(embedded)
+        output = self.fc(output)
+        return output
+
+# Hyperparameters
+d_model = 512
+d_state = 16
+d_conv = 4
+expand = 2
+vocab_size = len(vocab)
+
+model = MambaModel(vocab_size, d_model, d_state, d_conv, expand).to("cuda")
+
+# Step 4: Define Loss Function and Optimizer
+loss_function = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Step 5: Train the Model
+epochs = 100
+
+for epoch in range(epochs):
+    total_loss = 0
+    for sentence in data:
+        inputs = torch.tensor(sentence[:-1], dtype=torch.long).unsqueeze(0).to("cuda")
+        targets = torch.tensor(sentence[1:], dtype=torch.long).unsqueeze(0).to("cuda")
+
+        model.zero_grad()
+        output = model(inputs)
+        loss = loss_function(output.view(-1, vocab_size), targets.view(-1))
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    
+    if epoch % 10 == 0:
+        print(f'Epoch: {epoch}, Loss: {total_loss/len(data)}')
+
+# Step 6: Generate Sentences
+def generate_sentence(model, start_token, max_length):
+    model.eval()
+    indices = [word_to_ix[start_token]]
+    current_input = torch.tensor([indices], dtype=torch.long).to("cuda")
+    
+    for _ in range(max_length):
+        output = model(current_input)
+        next_token = torch.argmax(output[0, -1, :]).item()
+        indices.append(next_token)
+        current_input = torch.tensor([indices[-1:]], dtype=torch.long).to("cuda")
+        
+        if next_token == word_to_ix['<EOS>']:
+            break
+    
+    return ' '.join([ix_to_word[idx] for idx in indices])
+
+print(generate_sentence(model, '<SOS>', 10))
+
+/===
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+
+# Step 2: Prepare Your Vocabulary and Data
+vocab = ['<PAD>', '<SOS>', '<EOS>', 'hello', 'world', 'how', 'are', 'you']
+word_to_ix = {word: i for i, word in enumerate(vocab)}
+ix_to_word = {i: word for i, word in enumerate(vocab)}
+
+# Example sentences
+sentences = [['<SOS>', 'hello', 'world', '<EOS>'],
+             ['<SOS>', 'how', 'are', 'you', '<EOS>']]
+
+# Convert sentences to indices
+def sentence_to_indices(sentence, word_to_ix):
+    return [word_to_ix[word] for word in sentence]
+
+data = [sentence_to_indices(sentence, word_to_ix) for sentence in sentences]
+
+# Step 3: Define the Simple RNN (Mamba) Model
+class MambaRNN(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim):
+        super(MambaRNN, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+    
+    def forward(self, x, hidden):
+        embedded = self.embedding(x)
+        output, hidden = self.rnn(embedded, hidden)
+        output = self.fc(output)
+        return output, hidden
+
+    def init_hidden(self, batch_size):
+        weight = next(self.parameters()).data
+        hidden = weight.new(1, batch_size, hidden_dim).zero_()
+        return hidden
+
+# Hyperparameters
+embedding_dim = 10
+hidden_dim = 20
+output_dim = len(vocab)
+
+model = MambaRNN(len(vocab), embedding_dim, hidden_dim, output_dim)
+
+# Step 4: Define Loss Function and Optimizer
+loss_function = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.01)
+
+# Step 5: Train the Model
+epochs = 100
+
+for epoch in range(epochs):
+    total_loss = 0
+    for sentence in data:
+        inputs = torch.tensor(sentence[:-1], dtype=torch.long).unsqueeze(0)
+        targets = torch.tensor(sentence[1:], dtype=torch.long).unsqueeze(0)
+
+        hidden = model.init_hidden(inputs.size(0))
+
+        model.zero_grad()
+        output, hidden = model(inputs, hidden)
+        loss = loss_function(output.view(-1, len(vocab)), targets.view(-1))
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    
+    if epoch % 10 == 0:
+        print(f'Epoch: {epoch}, Loss: {total_loss/len(data)}')
+
+# Step 6: Generate Sentences
+def generate_sentence(model, start_token, max_length):
+    model.eval()
+    indices = [word_to_ix[start_token]]
+    current_input = torch.tensor([indices], dtype=torch.long)
+    hidden = model.init_hidden(current_input.size(0))
+    
+    for _ in range(max_length):
+        output, hidden = model(current_input, hidden)
+        next_token = torch.argmax(output[0, -1, :]).item()
+        indices.append(next_token)
+        current_input = torch.tensor([indices[-1:]], dtype=torch.long)
+        
+        if next_token == word_to_ix['<EOS>']:
+            break
+    
+    return ' '.join([ix_to_word[idx] for idx in indices])
+
+print(generate_sentence(model, '<SOS>', 10))
+
+
+/===
+transformer
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+
+# Step 2: Prepare Your Vocabulary and Data
+vocab = ['<PAD>', '<SOS>', '<EOS>', 'hello', 'world', 'how', 'are', 'you']
+word_to_ix = {word: i for i, word in enumerate(vocab)}
+ix_to_word = {i: word for i, word in enumerate(vocab)}
+
+# Example sentences
+sentences = [['<SOS>', 'hello', 'world', '<EOS>'],
+             ['<SOS>', 'how', 'are', 'you', '<EOS>']]
+
+# Convert sentences to indices
+def sentence_to_indices(sentence, word_to_ix):
+    return [word_to_ix[word] for word in sentence]
+
+data = [sentence_to_indices(sentence, word_to_ix) for sentence in sentences]
+
+# Step 3: Define the Transformer Model
+class TransformerModel(nn.Module):
+    def __init__(self, vocab_size, d_model, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward, max_seq_length):
+        super(TransformerModel, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.pos_encoder = nn.Parameter(torch.zeros(1, max_seq_length, d_model))
+        self.transformer = nn.Transformer(d_model, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward, batch_first=True)
+        self.fc_out = nn.Linear(d_model, vocab_size)
+        
+    def forward(self, src, tgt):
+        src_seq_length = src.size(1)
+        tgt_seq_length = tgt.size(1)
+        
+        src_pos = torch.arange(0, src_seq_length).unsqueeze(0).repeat(src.size(0), 1).to(src.device)
+        tgt_pos = torch.arange(0, tgt_seq_length).unsqueeze(0).repeat(tgt.size(0), 1).to(tgt.device)
+        
+        src = self.embedding(src) + self.pos_encoder[:, :src_seq_length, :]
+        tgt = self.embedding(tgt) + self.pos_encoder[:, :tgt_seq_length, :]
+        
+        output = self.transformer(src, tgt)
+        output = self.fc_out(output)
+        
+        return output
+
+# Hyperparameters
+d_model = 512
+nhead = 8
+num_encoder_layers = 3
+num_decoder_layers = 3
+dim_feedforward = 2048
+max_seq_length = 10
+vocab_size = len(vocab)
+
+model = TransformerModel(vocab_size, d_model, nhead, num_encoder_layers, num_decoder_layers, dim_feedforward, max_seq_length)
+
+# Step 4: Define Loss Function and Optimizer
+loss_function = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Step 5: Train the Model
+epochs = 100
+
+for epoch in range(epochs):
+    total_loss = 0
+    for sentence in data:
+        src = torch.tensor(sentence[:-1], dtype=torch.long).unsqueeze(0)
+        tgt_input = torch.tensor(sentence[:-1], dtype=torch.long).unsqueeze(0)
+        tgt_output = torch.tensor(sentence[1:], dtype=torch.long).unsqueeze(0)
+
+        model.zero_grad()
+        output = model(src, tgt_input)
+        loss = loss_function(output.view(-1, vocab_size), tgt_output.view(-1))
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    
+    if epoch % 10 == 0:
+        print(f'Epoch: {epoch}, Loss: {total_loss/len(data)}')
+
+# Step 6: Generate Sentences
+def generate_sentence(model, start_token, max_length):
+    model.eval()
+    src = torch.tensor([word_to_ix[start_token]], dtype=torch.long).unsqueeze(0)
+    tgt_input = torch.tensor([word_to_ix[start_token]], dtype=torch.long).unsqueeze(0)
+    
+    for _ in range(max_length - 1):
+        output = model(src, tgt_input)
+        next_token = torch.argmax(output[:, -1, :], dim=-1).item()
+        tgt_input = torch.cat([tgt_input, torch.tensor([[next_token]], dtype=torch.long)], dim=1)
+        
+        if next_token == word_to_ix['<EOS>']:
+            break
+    
+    return ' '.join([ix_to_word[idx] for idx in tgt_input.squeeze().tolist()])
+
+print(generate_sentence(model, '<SOS>', 10))
+
+/===
+hmm
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
+# Step 2: Prepare Your Vocabulary and Data
+vocab = ['<PAD>', '<SOS>', '<EOS>', 'hello', 'world', 'how', 'are', 'you']
+word_to_ix = {word: i for i, word in enumerate(vocab)}
+ix_to_word = {i: word for i, word in enumerate(vocab)}
+
+# Example sentences
+sentences = [['<SOS>', 'hello', 'world', '<EOS>'],
+             ['<SOS>', 'how', 'are', 'you', '<EOS>']]
+
+# Convert sentences to indices
+def sentence_to_indices(sentence, word_to_ix):
+    return [word_to_ix[word] for word in sentence]
+
+data = [sentence_to_indices(sentence, word_to_ix) for sentence in sentences]
+
+# Step 3: Define the HMM
+class HMM:
+    def __init__(self, vocab_size, hidden_size):
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        
+        # Initialize the transition, emission, and start probabilities
+        self.transitions = np.random.rand(hidden_size, hidden_size)
+        self.emissions = np.random.rand(hidden_size, vocab_size)
+        self.start_probs = np.random.rand(hidden_size)
+        
+        # Normalize the probabilities
+        self.transitions /= self.transitions.sum(axis=1, keepdims=True)
+        self.emissions /= self.emissions.sum(axis=1, keepdims=True)
+        self.start_probs /= self.start_probs.sum()
+
+    def forward(self, sequence):
+        T = len(sequence)
+        alpha = np.zeros((T, self.hidden_size))
+        
+        # Initialize alpha for the first time step
+        alpha[0] = self.start_probs * self.emissions[:, sequence[0]]
+        
+        # Forward algorithm
+        for t in range(1, T):
+            for j in range(self.hidden_size):
+                alpha[t, j] = np.sum(alpha[t-1] * self.transitions[:, j]) * self.emissions[j, sequence[t]]
+        
+        return alpha
+
+    def backward(self, sequence):
+        T = len(sequence)
+        beta = np.zeros((T, self.hidden_size))
+        
+        # Initialize beta for the last time step
+        beta[T-1] = 1
+        
+        # Backward algorithm
+        for t in range(T-2, -1, -1):
+            for i in range(self.hidden_size):
+                beta[t, i] = np.sum(beta[t+1] * self.transitions[i, :] * self.emissions[:, sequence[t+1]])
+        
+        return beta
+
+    def train(self, sequences, epochs=100, lr=0.01):
+        for epoch in range(epochs):
+            A_num = np.zeros((self.hidden_size, self.hidden_size))
+            B_num = np.zeros((self.hidden_size, self.vocab_size))
+            pi_num = np.zeros(self.hidden_size)
+            A_den = np.zeros(self.hidden_size)
+            B_den = np.zeros(self.hidden_size)
+            
+            for sequence in sequences:
+                alpha = self.forward(sequence)
+                beta = self.backward(sequence)
+                T = len(sequence)
+                
+                # E-step: calculate the expected counts
+                xi = np.zeros((T-1, self.hidden_size, self.hidden_size))
+                for t in range(T-1):
+                    denom = np.sum(alpha[t] * beta[t])
+                    for i in range(self.hidden_size):
+                        num = alpha[t, i] * self.transitions[i, :] * self.emissions[:, sequence[t+1]] * beta[t+1]
+                        xi[t, i, :] = num / denom
+                
+                gamma = np.sum(xi, axis=
+
+/===
+lstm
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+
+# Step 2: Prepare Your Vocabulary and Data
+vocab = ['<PAD>', '<SOS>', '<EOS>', 'hello', 'world', 'how', 'are', 'you']
+word_to_ix = {word: i for i, word in enumerate(vocab)}
+ix_to_word = {i: word for i, word in enumerate(vocab)}
+
+# Example sentences
+sentences = [['<SOS>', 'hello', 'world', '<EOS>'],
+             ['<SOS>', 'how', 'are', 'you', '<EOS>']]
+
+# Convert sentences to indices
+def sentence_to_indices(sentence, word_to_ix):
+    return [word_to_ix[word] for word in sentence]
+
+data = [sentence_to_indices(sentence, word_to_ix) for sentence in sentences]
+
+# Step 3: Define the Model
+class SimpleLSTM(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim):
+        super(SimpleLSTM, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+    
+    def forward(self, x, hidden):
+        embedded = self.embedding(x)
+        output, hidden = self.lstm(embedded, hidden)
+        output = self.fc(output)
+        return output, hidden
+
+    def init_hidden(self, batch_size):
+        weight = next(self.parameters()).data
+        hidden = (weight.new(1, batch_size, hidden_dim).zero_(),
+                  weight.new(1, batch_size, hidden_dim).zero_())
+        return hidden
+
+# Hyperparameters
+embedding_dim = 10
+hidden_dim = 20
+output_dim = len(vocab)
+
+model = SimpleLSTM(len(vocab), embedding_dim, hidden_dim, output_dim)
+
+# Step 4: Define Loss Function and Optimizer
+loss_function = nn.CrossEntropyLoss()
+optimizer = optim.SGD(model.parameters(), lr=0.01)
+
+# Step 5: Train the Model
+epochs = 100
+
+for epoch in range(epochs):
+    total_loss = 0
+    for sentence in data:
+        inputs = torch.tensor(sentence[:-1], dtype=torch.long).unsqueeze(0)
+        targets = torch.tensor(sentence[1:], dtype=torch.long).unsqueeze(0)
+
+        hidden = model.init_hidden(inputs.size(0))
+
+        model.zero_grad()
+        output, hidden = model(inputs, hidden)
+        loss = loss_function(output.view(-1, len(vocab)), targets.view(-1))
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+    
+    if epoch % 10 == 0:
+        print(f'Epoch: {epoch}, Loss: {total_loss/len(data)}')
+
+# Step 6: Generate Sentences
+def generate_sentence(model, start_token, max_length):
+    model.eval()
+    indices = [word_to_ix[start_token]]
+    current_input = torch.tensor([indices], dtype=torch.long)
+    hidden = model.init_hidden(current_input.size(0))
+    
+    for _ in range(max_length):
+        output, hidden = model(current_input, hidden)
+        next_token = torch.argmax(output[0, -1, :]).item()
+        indices.append(next_token)
+        current_input = torch.tensor([indices[-1:]], dtype=torch.long)
+        
+        if next_token == word_to_ix['<EOS>']:
+            break
+    
+    return ' '.join([ix_to_word[idx] for idx in indices])
+
+print(generate_sentence(model, '<SOS>', 10))
+
+/===
+rnn
+class SimpleRNN(nn.Module):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim):
+        super(SimpleRNN, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+    
+    def forward(self, x):
+        embedded = self.embedding(x)
+        output, hidden = self.rnn(embedded)
+        output = self.fc(output)
+        return output
+
+# Hyperparameters
+embedding_dim = 10
+hidden_dim = 20
+output_dim = len(vocab)
+
+model = SimpleRNN(len(vocab), embedding_dim, hidden_dim, output_dim)
