@@ -1,3 +1,138 @@
+import gradio as gr
+import datetime
+from functools import partial
+
+# Dictionary to store conversations
+conversation_log = {}
+
+# def toggle_logs(username, log_visible):
+#     if log_visible:
+#         return gr.update(visible=False), gr.update(value="Show Logs")
+#     else:
+#         return gr.update(visible=True, value=show_logs(username)), gr.update(value="Hide Logs")
+
+# log_output = gr.Textbox(label="Conversation Logs", interactive=False, lines=10, visible=False)
+# log_visible = gr.State(False)
+
+def add_feedback(feedback, username):
+    if username in conversation_log and conversation_log[username]:
+        conversation_log[username][-1]["feedback"] = feedback
+        # Write feedback to log
+        write_feedback_to_log(username, conversation_log[username][-1], feedback)
+    return gr.update()
+
+def write_to_log(username, message, reply):
+    with open('feedback.log', 'a') as log_file:
+        log_file.write(f"[{datetime.datetime.now().isoformat()}] User: {username}\n")
+        log_file.write(f"Message: {message}\n")
+        log_file.write(f"Reply: {reply}\n")
+        log_file.write("Feedback: Not provided yet\n\n")
+
+def write_feedback_to_log(username, message, feedback):
+    with open('feedback.log', 'a') as log_file:
+        log_file.write(f"[{datetime.datetime.now().isoformat()}] User: {username}\n")
+        log_file.write(f"Message: {message['user_message']}\n")
+        log_file.write(f"Reply: {message['assistant_reply']}\n")
+        log_file.write(f"Feedback: {feedback}\n\n")
+
+def chat(message, history, username):
+    # Generate a simple reply
+    reply = f"I received your message: '{message}'"
+    
+    # Append the new message and reply to the conversation history
+    history.append((message, reply))
+    
+    # Log the conversation
+    if username not in conversation_log:
+        conversation_log[username] = []
+    conversation_log[username].append({
+        "timestamp": datetime.datetime.now().isoformat(),
+        "user_message": message,
+        "assistant_reply": reply,
+        "feedback": None
+    })
+    
+    return history, history
+
+# def add_feedback(feedback, username):
+#     if username in conversation_log and conversation_log[username]:
+#         conversation_log[username][-1]["feedback"] = feedback
+#     return show_logs(username)
+
+# def show_logs(username):
+#     if username not in conversation_log:
+#         return "No conversation logs for this user."
+    
+#     log_output = f"Logs for user: {username}\n\n"
+#     for msg in conversation_log[username]:
+#         log_output += f"  {msg['timestamp']}:\n"
+#         log_output += f"    User: {msg['user_message']}\n"
+#         log_output += f"    Assistant: {msg['assistant_reply']}\n"
+#         log_output += f"    Feedback: {msg['feedback'] or 'No feedback yet'}\n\n"
+#     return log_output
+
+# def toggle_logs(username, log_visible):
+#     if log_visible:
+#         return gr.update(visible=False), gr.update(value="Show Logs")
+#     else:
+#         return gr.update(visible=True, value=show_logs(username)), gr.update(value="Hide Logs")
+
+
+# Define username and password pairs
+auth_users = ["user1", "user2"]
+
+def auth(username, password):
+    if username in auth_users and password=="testing":
+        return username
+    return None
+
+def user_info(request: gr.Request):
+    return request.username
+
+with gr.Blocks() as demo:
+    gr.Markdown("# Chat Application with Feedback")
+    
+    with gr.Row():
+        with gr.Column(scale=2):
+            chatbot = gr.Chatbot()
+            msg = gr.Textbox(label="Type your message here")
+            clear = gr.Button("Clear")
+        
+        with gr.Column(scale=1):
+            current_user = gr.Textbox(label="Current User", interactive=False)
+            # log_output = gr.Textbox(label="Conversation Logs", interactive=False, lines=10)
+            # show_logs_btn = gr.Button("Show Logs")
+
+            
+            with gr.Row():
+                thumbs_up = gr.Button("👍")
+                thumbs_down = gr.Button("👎")
+                red_x = gr.Button("❌", elem_classes=["red-x"])
+
+    demo.load(user_info, None, current_user)
+    # demo.load(lambda u: show_logs(u), current_user, log_output)
+
+    msg.submit(chat, [msg, chatbot, current_user], [chatbot, msg]).then(
+        lambda: "", None, msg
+    )
+    clear.click(lambda: None, None, chatbot, queue=False)
+    # log_visible = gr.State(False)
+    # show_logs_btn.click(
+    #     toggle_logs,
+    #     [current_user, log_visible],
+    #     [log_output, show_logs_btn, log_visible]
+    # )
+    # show_logs_btn.click(show_logs, current_user, log_output)
+
+    thumbs_up.click(partial(add_feedback, "👍"), current_user) #, log_output)
+    thumbs_down.click(partial(add_feedback, "👎"), current_user) # , log_output)
+    red_x.click(partial(add_feedback, "❌"), current_user) #, log_output)
+
+if __name__ == "__main__":
+    demo.launch(auth=auth, auth_message="Enter username and password")
+
+
+/====
 import streamlit as st
 import time
 import json
