@@ -310,3 +310,19 @@ dpo_trainer.train()
 
 //cuda out of memory
 
+import os
+import gc
+import torch
+
+import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, BitsAndBytesConfig
+from datasets import load_dataset
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
+from trl import DPOTrainer
+import bitsandbytes as bnb
+from google.colab import userdata
+import wandb
+
+
+pip install -q datasets trl peft bitsandbytes sentencepiece wandb
+
