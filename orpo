@@ -1,0 +1,197 @@
+trl :  0.9.4
+accelerate :  0.27.2
+bnb :  0.43.1
+transformers:  4.41.2
+datasets  2.20.0
+[Dataset({
+     features: ['prompt', 'prompt_id', 'chosen', 'rejected', 'messages', 'score_chosen', 'score_rejected'],
+     num_rows: 61135
+ }),
+ Dataset({
+     features: ['prompt', 'prompt_id', 'chosen', 'rejected', 'messages', 'score_chosen', 'score_rejected'],
+     num_rows: 2000
+ })]
+
+dataset[0][1]
+
+{'prompt': "how can I transform the getPosition method of antv/g's group in zrender?",
+ 'prompt_id': '2766cbd1fed7f982d94b031596e771c841668bd891383965fb30aad1108fe95c',
+ 'chosen': [{'content': "how can I transform the getPosition method of antv/g's group in zrender?",
+   'role': 'user'},
+  {'content': "It is not recommended to modify built-in methods as it can lead to unexpected results and potential bugs. You may consider developing a new method or exploring other methods to achieve your desired outcome. Alternatively, you can search for other libraries or modules that offer similar functionalities or reach out to the library's support team for assistance.",
+   'role': 'assistant'}],
+ 'rejected': [{'content': "how can I transform the getPosition method of antv/g's group in zrender?",
+   'role': 'user'},
+  {'content': 'Thank you for reaching out for assistance! I\'m here to help you with your question. However, I must point out that the question itself may not be meaningful.\n\nThe `getPosition` method is a part of the AntV/G library, which is a gradient boosting framework. It is not clear what you mean by "transforming" this method, as it is not a functional programming concept. Additionally, the concept of "zrender" is not related to AntV/G.\n\nCould you please provide more context or clarify your question? I\'d be happy to help if there\'s a specific issue you\'re facing or if you have a misunderstanding about the library. I\'m here to assist you in a safe, respectful, and helpful manner.',
+   'role': 'assistant'}],
+ 'messages': [{'content': "how can I transform the getPosition method of antv/g's group in zrender?",
+   'role': 'user'},
+  {'content': "It is not recommended to modify built-in methods as it can lead to unexpected results and potential bugs. You may consider developing a new method or exploring other methods to achieve your desired outcome. Alternatively, you can search for other libraries or modules that offer similar functionalities or reach out to the library's support team for assistance.",
+   'role': 'assistant'}],
+ 'score_chosen': 6.5,
+ 'score_rejected': 6.5}
+
+after
+
+{'prompt': "how can I transform the getPosition method of antv/g's group in zrender?",
+ 'prompt_id': '2766cbd1fed7f982d94b031596e771c841668bd891383965fb30aad1108fe95c',
+ 'chosen': "<|im_start|>user\nhow can I transform the getPosition method of antv/g's group in zrender?<|im_end|>\n<|im_start|>assistant\nIt is not recommended to modify built-in methods as it can lead to unexpected results and potential bugs. You may consider developing a new method or exploring other methods to achieve your desired outcome. Alternatively, you can search for other libraries or modules that offer similar functionalities or reach out to the library's support team for assistance.<|im_end|>\n",
+ 'rejected': '<|im_start|>user\nhow can I transform the getPosition method of antv/g\'s group in zrender?<|im_end|>\n<|im_start|>assistant\nThank you for reaching out for assistance! I\'m here to help you with your question. However, I must point out that the question itself may not be meaningful.\n\nThe `getPosition` method is a part of the AntV/G library, which is a gradient boosting framework. It is not clear what you mean by "transforming" this method, as it is not a functional programming concept. Additionally, the concept of "zrender" is not related to AntV/G.\n\nCould you please provide more context or clarify your question? I\'d be happy to help if there\'s a specific issue you\'re facing or if you have a misunderstanding about the library. I\'m here to assist you in a safe, respectful, and helpful manner.<|im_end|>\n',
+ 'messages': [{'content': "how can I transform the getPosition method of antv/g's group in zrender?",
+   'role': 'user'},
+  {'content': "It is not recommended to modify built-in methods as it can lead to unexpected results and potential bugs. You may consider developing a new method or exploring other methods to achieve your desired outcome. Alternatively, you can search for other libraries or modules that offer similar functionalities or reach out to the library's support team for assistance.",
+   'role': 'assistant'}],
+ 'score_chosen': 6.5,
+ 'score_rejected': 6.5}
+
+
+
+
+import os
+import gc
+import torch
+
+import transformers
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, BitsAndBytesConfig
+from datasets import load_dataset
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
+from trl import DPOTrainer
+import bitsandbytes as bnb
+from google.colab import userdata
+import wandb
+
+# Defined in the secrets tab in Google Colab
+hf_token = userdata.get('huggingface')
+wb_token = userdata.get('wandb')
+wandb.login(key=wb_token)
+
+model_name = "teknium/OpenHermes-2.5-Mistral-7B"
+new_model = "NeuralHermes-2.5-Mistral-7B"
+
+dataset = load_dataset("HuggingFaceH4/ultrafeedback_binarized", split=["train_prefs", "test_prefs"])
+
+#transformation
+
+import torch, multiprocessing
+from trl import ORPOTrainer, ORPOConfig
+def process(row):
+    row["chosen"] = tokenizer.apply_chat_template(row["chosen"], tokenize=False)
+    row["rejected"] = tokenizer.apply_chat_template(row["rejected"], tokenize=False)
+    return row
+
+dataset[0] = dataset[0].map(
+    process,
+    num_proc= multiprocessing.cpu_count(),
+    load_from_cache_file=False,
+)
+
+dataset[1] = dataset[1].map(
+    process,
+    num_proc= multiprocessing.cpu_count(),
+    load_from_cache_file=False,
+)
+
+tokenizer = AutoTokenizer.from_pretrained(model_name, add_eos_token=True, use_fast=True)
+tokenizer.pad_token = tokenizer.eos_token
+tokenizer.padding_side = 'left'
+
+major_version, minor_version = torch.cuda.get_device_capability()
+if major_version >= 8:
+  !pip install flash-attn
+  torch_dtype = torch.bfloat16
+  attn_implementation='flash_attention_2'
+  print("Your GPU is compatible with FlashAttention and bfloat16.")
+else:
+  torch_dtype = torch.float16
+  attn_implementation='eager'
+  print("Your GPU is not compatible with FlashAttention and bfloat16.")
+
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit = True, #True,
+    bnb_4bit_quant_type = "nf4",
+    bnb_4bit_compute_dtype = torch.bfloat16,
+    bnb_4bit_use_double_quant = True, # True
+)
+
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype=torch.bfloat16,
+    quantization_config=bnb_config,
+    device_map = {"":0},
+    attn_implementation = attn_implementation
+)
+
+model = prepare_model_for_kbit_training(model)
+model.config.pad_token_id = tokenizer.pad_token_id
+
+from trl import ORPOConfig
+
+orpo_config = ORPOConfig(
+    output_dir="./results/",
+    evaluation_strategy="steps",
+    do_eval=False,
+    optim="paged_adamw_8bit",
+    per_device_train_batch_size=2,
+    gradient_accumulation_steps=4,
+    per_device_eval_batch_size=2,
+    log_level="debug",
+    logging_steps=20,
+    learning_rate=8e-6,
+    max_steps=20,
+    save_steps=10,
+    save_strategy='epoch',
+    warmup_ratio=0.1,
+    lr_scheduler_type="linear",
+    beta=0.1, #beta is ORPO's lambda
+    max_length=1024,
+)
+
+peft_config = LoraConfig(
+    lora_alpha = 16,
+    lora_dropout = 0.05,
+    r = 16,
+    bias = "none",
+    task_type = "CAUSAL_LM",
+    target_modules = ['k_proj', 'q_proj', 'v_proj', 'o_proj', 'gate_proj', 'down_proj', 'up_proj']
+)
+
+#accelerate 0.27.2
+from trl import ORPOTrainer
+
+trainer = ORPOTrainer(
+    model = model,
+    train_dataset = dataset[0],
+    eval_dataset = dataset[1],
+    peft_config = peft_config,
+    args = orpo_config,
+    tokenizer = tokenizer
+)
+
+trainer.train()
+
+# Format prompt
+message = [
+    {"role": "system", "content": "You are a helpful assistant chatbot."},
+    {"role": "user", "content": "What is a Large Language Model?"}
+]
+#tokenizer = AutoTokenizer.from_pretrained(new_model)
+prompt = tokenizer.apply_chat_template(message, add_generation_prompt=True, tokenize=False)
+
+# Create pipeline
+pipeline = transformers.pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer
+)
+
+# Generate text
+sequences = pipeline(
+    prompt,
+    do_sample=True,
+    temperature=0.7,
+    top_p=0.9,
+    num_return_sequences=1,
+    max_length=200,
+)
+print(sequences[0]['generated_text'])
+
