@@ -195,3 +195,118 @@ sequences = pipeline(
 )
 print(sequences[0]['generated_text'])
 
+
+//dpo
+
+def chatml_format(example):
+    # Format system
+    if len(example['system']) > 0:
+        message = {"role": "system", "content": example['system']}
+        system = tokenizer.apply_chat_template([message], tokenize=False)
+    else:
+        system = ""
+
+    # Format instruction
+    message = {"role": "user", "content": example['question']}
+    prompt = tokenizer.apply_chat_template([message], tokenize=False, add_generation_prompt=True)
+
+    # Format chosen answer
+    chosen = example['chosen'] + "<|im_end|>\n"
+
+    # Format rejected answer
+    rejected = example['rejected'] + "<|im_end|>\n"
+
+    return {
+        "prompt": system + prompt,
+        "chosen": chosen,
+        "rejected": rejected,
+    }
+
+# Load dataset
+dataset = load_dataset("Intel/orca_dpo_pairs")['train']
+
+# Save columns
+original_columns = dataset.column_names
+
+# Tokenizer
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer.pad_token = tokenizer.eos_token
+tokenizer.padding_side = "left"
+
+# Format dataset
+dataset = dataset.map(
+    chatml_format,
+    remove_columns=original_columns
+)
+
+# Print sample
+dataset[1]
+
+from trl import DPOConfig
+training_args = DPOConfig(
+    beta=0.1,
+    output_dir='/content/dpo/'
+)
+
+ LoRA configuration
+peft_config = LoraConfig(
+    r=16,
+    lora_alpha=16,
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM",
+    target_modules=['k_proj', 'gate_proj', 'v_proj', 'up_proj', 'q_proj', 'o_proj', 'down_proj']
+)
+
+# Model to fine-tune
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype=torch.float16,
+    load_in_4bit=False,
+    low_cpu_mem_usage=True
+)
+model.config.use_cache = False
+
+# Reference model
+ref_model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    torch_dtype=torch.float16,
+    load_in_4bit=False,
+        low_cpu_mem_usage=True,
+)
+
+# training_args = TrainingArguments(
+#     per_device_train_batch_size=4,
+#     gradient_accumulation_steps=4,
+#     gradient_checkpointing=True,
+#     learning_rate=5e-5,
+#     lr_scheduler_type="cosine",
+#     max_steps=200,
+#     save_strategy="no",
+#     logging_steps=1,
+#     output_dir=new_model,
+#     optim="paged_adamw_32bit",
+#     warmup_steps=100,
+#     bf16=True,
+#     report_to="wandb",
+# )
+
+# Create DPO trainer
+dpo_trainer = DPOTrainer(
+    model,
+    ref_model=None,
+    args=training_args,
+    train_dataset=dataset,
+    tokenizer=tokenizer,
+    peft_config=peft_config,
+    beta=0.1,
+
+    max_prompt_length=1024,
+    max_length=1536,
+)
+
+# Fine-tune model with DPO
+dpo_trainer.train()
+
+//cuda out of memory
+
