@@ -1,3 +1,107 @@
+class HMM:
+    def __init__(self, vocab_size, hidden_size):
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        
+        # Initialize the transition, emission, and start probabilities
+        self.transitions = np.random.rand(hidden_size, hidden_size)
+        self.emissions = np.random.rand(hidden_size, vocab_size)
+        self.start_probs = np.random.rand(hidden_size)
+        
+        # Normalize the probabilities
+        self.transitions /= self.transitions.sum(axis=1, keepdims=True)
+        self.emissions /= self.emissions.sum(axis=1, keepdims=True)
+        self.start_probs /= self.start_probs.sum()
+
+    def forward(self, sequence):
+        T = len(sequence)
+        alpha = np.zeros((T, self.hidden_size))
+        
+        # Initialize alpha for the first time step
+        alpha[0] = self.start_probs * self.emissions[:, sequence[0]]
+        
+        # Forward algorithm
+        for t in range(1, T):
+            for j in range(self.hidden_size):
+                alpha[t, j] = np.sum(alpha[t-1] * self.transitions[:, j]) * self.emissions[j, sequence[t]]
+        
+        return alpha
+
+    def backward(self, sequence):
+        T = len(sequence)
+        beta = np.zeros((T, self.hidden_size))
+        
+        # Initialize beta for the last time step
+        beta[T-1] = 1
+        
+        # Backward algorithm
+        for t in range(T-2, -1, -1):
+            for i in range(self.hidden_size):
+                beta[t, i] = np.sum(beta[t+1] * self.transitions[i, :] * self.emissions[:, sequence[t+1]])
+        
+        return beta
+
+    def train(self, sequences, epochs=100, lr=0.01):
+        for epoch in range(epochs):
+            A_num = np.zeros((self.hidden_size, self.hidden_size))
+            B_num = np.zeros((self.hidden_size, self.vocab_size))
+            pi_num = np.zeros(self.hidden_size)
+            A_den = np.zeros(self.hidden_size)
+            B_den = np.zeros(self.hidden_size)
+            
+            for sequence in sequences:
+                alpha = self.forward(sequence)
+                beta = self.backward(sequence)
+                T = len(sequence)
+                
+                # E-step: calculate the expected counts
+                xi = np.zeros((T-1, self.hidden_size, self.hidden_size))
+                for t in range(T-1):
+                    denom = np.sum(alpha[t] * beta[t])
+                    for i in range(self.hidden_size):
+                        num = alpha[t, i] * self.transitions[i, :] * self.emissions[:, sequence[t+1]] * beta[t+1]
+                        xi[t, i, :] = num / denom
+                
+                gamma = np.sum(xi, axis=2)
+                gamma = np.vstack((gamma, np.sum(alpha[-1] * beta[-1]) / np.sum(alpha[-1])))
+                
+                # Update counts
+                pi_num += gamma[0]
+                for t in range(T-1):
+                    A_num += xi[t]
+                    B_num[:, sequence[t]] += gamma[t]
+                    A_den += gamma[t]
+                    B_den += gamma[t]
+                B_num[:, sequence[-1]] += gamma[-1]
+                B_den += gamma[-1]
+            
+            # M-step: update the parameters
+            self.start_probs = pi_num / pi_num.sum()
+            self.transitions = A_num / A_den[:, None]
+            self.emissions = B_num / B_den[:, None]
+
+            if epoch % 10 == 0:
+                loss = -np.sum(np.log(np.sum(alpha[-1])))
+                print(f'Epoch: {epoch}, Loss: {loss}')
+
+    def generate(self, start_token, max_length):
+        current_token = start_token
+        sequence = [current_token]
+        current_state = np.argmax(np.random.multinomial(1, self.start_probs))
+        
+        for _ in range(max_length - 1):
+            next_state = np.argmax(np.random.multinomial(1, self.transitions[current_state]))
+            next_token = np.argmax(np.random.multinomial(1, self.emissions[next_state]))
+            sequence.append(next_token)
+            current_state = next_state
+            
+            if next_token == word_to_ix['<EOS>']:
+                break
+        
+        return ' '.join([ix_to_word[idx] for idx in sequence])
+
+
+/===
 import gradio as gr
 import datetime
 from functools import partial
