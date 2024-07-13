@@ -46,30 +46,37 @@ def load_from_memory(b):
             print(f"Error loading DataFrame from memory: {e}")
 
 def add_row(b):
+    index = int(row_index.value)
     df = ipysheet.to_dataframe(sheet)
-    df.loc[len(df)] = ["" for _ in range(df.shape[1])]
+    new_row = pd.Series(["" for _ in range(df.shape[1])], index=df.columns)
+    df = pd.concat([df.iloc[:index], new_row.to_frame().T, df.iloc[index:]]).reset_index(drop=True)
     load_dataframe(df)
 
 def delete_row(b):
+    index = int(row_index.value)
     df = ipysheet.to_dataframe(sheet)
-    if not df.empty:
-        df = df.iloc[:-1]
+    if not df.empty and 0 <= index < df.shape[0]:
+        df = df.drop(index).reset_index(drop=True)
     load_dataframe(df)
 
 def add_column(b):
+    index = int(column_index.value)
     df = ipysheet.to_dataframe(sheet)
-    df[""] = ""
+    df.insert(index, "", [""] * len(df))
     load_dataframe(df)
 
 def delete_column(b):
+    index = int(column_index.value)
     df = ipysheet.to_dataframe(sheet)
-    if not df.empty:
-        df = df.iloc[:, :-1]
+    if not df.empty and 0 <= index < df.shape[1]:
+        df = df.drop(df.columns[index], axis=1)
     load_dataframe(df)
 
 load_file_name = widgets.Text(placeholder='Enter file name to load')
 save_file_name = widgets.Text(placeholder='Enter file name to save')
 dataframe_name = widgets.Text(placeholder='Enter DataFrame name')
+row_index = widgets.BoundedIntText(value=0, min=0, description='Row index:')
+column_index = widgets.BoundedIntText(value=0, min=0, description='Column index:')
 
 load_button = widgets.Button(description="Load CSV")
 load_button.on_click(load_csv)
@@ -91,7 +98,8 @@ ui = widgets.VBox([
     widgets.HBox([widgets.Label("Load CSV:"), load_file_name, load_button]),
     widgets.HBox([widgets.Label("Save CSV:"), save_file_name, save_button]),
     widgets.HBox([widgets.Label("Load DataFrame from Memory:"), dataframe_name, load_mem_button]),
-    widgets.HBox([add_row_button, delete_row_button, add_column_button, delete_column_button])
+    widgets.HBox([row_index, add_row_button, delete_row_button]),
+    widgets.HBox([column_index, add_column_button, delete_column_button])
 ])
 
 display(ui)
