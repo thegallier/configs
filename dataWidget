@@ -2,7 +2,14 @@
 import ipysheet
 import pandas as pd
 import ipywidgets as widgets
-from IPython.display import display, clear_output
+from IPython.display import display, clear_output, HTML
+from ipykernel.comm import Comm
+
+selected_row = None
+selected_col = None
+search_results = []
+search_index = -1
+sheet = None
 
 def load_csv(b):
     file_name = load_file_name.value
@@ -23,12 +30,13 @@ def load_dataframe(df):
     clear_output(wait=True)
     display(ui)
     display(sheet)
+    display(HTML(js_code))
 
 def save_csv(b):
     file_name = save_file_name.value
     if file_name:
         try:
-            df = ipysheet.to_dataframe(sheet)
+            df = ipysheet.to_dataframe(sheet).fillna('')
             df.to_csv(file_name, index=False)
             print(f"Sheet saved to {file_name}")
         except Exception as e:
@@ -46,78 +54,97 @@ def load_from_memory(b):
             print(f"Error loading DataFrame from memory: {e}")
 
 def add_row(b):
-    index = int(row_index.value)
-    df = ipysheet.to_dataframe(sheet)
+    global selected_row
+    df = ipysheet.to_dataframe(sheet).fillna('')
     new_row = pd.Series(["" for _ in range(df.shape[1])], index=df.columns)
-    df = pd.concat([df.iloc[:index], new_row.to_frame().T, df.iloc[index:]]).reset_index(drop=True)
+    if selected_row is None or selected_row < 0:
+        selected_row = 0
+    df = pd.concat([df.iloc[:selected_row + 1], new_row.to_frame().T, df.iloc[selected_row + 1:]]).reset_index(drop=True)
     load_dataframe(df)
+    selected_row += 1
 
 def delete_row(b):
-    index = int(row_index.value)
-    df = ipysheet.to_dataframe(sheet)
-    if not df.empty and 0 <= index < df.shape[0]:
-        df = df.drop(index).reset_index(drop=True)
-    load_dataframe(df)
+    global selected_row
+    df = ipysheet.to_dataframe(sheet).fillna('')
+    if not df.empty and selected_row is not None and 0 <= selected_row < df.shape[0]:
+        df = df.drop(selected_row).reset_index(drop=True)
+        load_dataframe(df)
+        if selected_row >= df.shape[0]:
+            selected_row = max(0, df.shape[0] - 1)
 
 def add_column(b):
-    col_name = column_name.value.strip()
-    df = ipysheet.to_dataframe(sheet)
-    if col_name == "":
-        col_name = str(len(df.columns))
-    df.insert(len(df.columns), col_name, [""] * len(df))
+    global selected_col
+    df = ipysheet.to_dataframe(sheet).fillna('')
+    new_col_name = f"Column {len(df.columns)}"
+    if selected_col is None or selected_col < 0:
+        selected_col = 0
+    df.insert(selected_col + 1, new_col_name, [""] * len(df))
     load_dataframe(df)
+    selected_col += 1
 
 def delete_column(b):
-    col_name = column_name.value.strip()
-    df = ipysheet.to_dataframe(sheet)
-    if not df.empty:
-        if col_name in df.columns:
-            df = df.drop(columns=[col_name])
-        else:
-            print(f"Column '{col_name}' not found.")
-    load_dataframe(df)
+    global selected_col
+    df = ipysheet.to_dataframe(sheet).fillna('')
+    if not df.empty and selected_col is not None and 0 <= selected_col < df.shape[1]:
+        df = df.drop(df.columns[selected_col], axis=1)
+        load_dataframe(df)
+        if selected_col >= df.shape[1]:
+            selected_col = max(0, df.shape[1] - 1)
 
-search_results = []
-search_index = -1
+def highlight_search_result(row, col):
+    display(HTML(f"""
+    <script>
+    function highlightCell(row, col) {{
+        setTimeout(function() {{
+            var cells = document.querySelectorAll('.ipysheet-cell');
+            cells.forEach(cell => {{
+                cell.style.backgroundColor = '';
+            }});
+            var cell = document.querySelector(`.ipysheet-cell[data-row="${{row}}"][data-col="${{col}}"]`);
+            if (cell) {{
+                cell.style.backgroundColor = 'yellow';
+                cell.scrollIntoView({{behavior: 'smooth', block: 'center', inline: 'center'}});
+            }}
+        }}, 100);  // Short delay to ensure the sheet has rendered
+    }}
+    highlightCell({row}, {col});
+    </script>
+    """))
 
 def search_cell(b):
     global search_results, search_index
-    search_str = search_text.value
-    df = ipysheet.to_dataframe(sheet)
-    search_results = [(row, col) for row in range(df.shape[0]) for col in range(df.shape[1]) if search_str in str(df.iat[row, col])]
+    search_str = search_text.value.lower()
+    df = ipysheet.to_dataframe(sheet).fillna('')
+    search_results = [(row, col) for row in range(df.shape[0]) for col in range(df.shape[1]) 
+                      if search_str in str(df.iat[row, col]).lower()]
+    search_index = 0
     if search_results:
-        search_index = 0
-        highlight_cell(*search_results[search_index])
+        row, col = search_results[search_index]
+        highlight_search_result(row, col)
+        print(f"Found '{search_str}' at row {row + 1}, column {col + 1}")
     else:
-        search_index = -1
         print(f"No cells contain the string '{search_str}'")
 
 def next_search_result(b):
     global search_index
-    if search_results and search_index != -1:
-        search_index += 1
-        if search_index < len(search_results):
-            highlight_cell(*search_results[search_index])
-        else:
-            search_index = -1
-            print("No more cells contain the string.")
+    if search_results:
+        search_index = (search_index + 1) % len(search_results)
+        row, col = search_results[search_index]
+        highlight_search_result(row, col)
+        print(f"Result {search_index + 1} of {len(search_results)}: row {row + 1}, column {col + 1}")
     else:
         print("No search results available. Perform a search first.")
 
-def highlight_cell(row, col):
-    for cell in sheet.cells:
-        cell.background_color = None
-    cell = next(cell for cell in sheet.cells if cell.row_start == row and cell.column_start == col)
-    cell.background_color = 'yellow'
-    clear_output(wait=True)
-    display(ui)
-    display(sheet)
+def handle_cell_click(event):
+    global selected_row, selected_col
+    selected_row = event['row']
+    selected_col = event['column']
+    print(f"Selected cell: Row {selected_row + 1}, Column {selected_col + 1}")
 
 load_file_name = widgets.Text(placeholder='Enter file name to load')
 save_file_name = widgets.Text(placeholder='Enter file name to save')
 dataframe_name = widgets.Text(placeholder='Enter DataFrame name')
-row_index = widgets.BoundedIntText(value=0, min=0, description='Row index:')
-column_name = widgets.Text(placeholder='Enter column name or index', description='Column name:')
+search_text = widgets.Text(placeholder='Enter search string')
 
 load_button = widgets.Button(description="Load CSV")
 load_button.on_click(load_csv)
@@ -135,7 +162,6 @@ add_column_button.on_click(add_column)
 delete_column_button = widgets.Button(description="Delete Column")
 delete_column_button.on_click(delete_column)
 
-search_text = widgets.Text(placeholder='Enter search string')
 search_button = widgets.Button(description="Search")
 search_button.on_click(search_cell)
 next_button = widgets.Button(description="Next")
@@ -145,16 +171,29 @@ ui = widgets.VBox([
     widgets.HBox([widgets.Label("Load CSV:"), load_file_name, load_button]),
     widgets.HBox([widgets.Label("Save CSV:"), save_file_name, save_button]),
     widgets.HBox([widgets.Label("Load DataFrame from Memory:"), dataframe_name, load_mem_button]),
-    widgets.HBox([row_index, add_row_button, delete_row_button]),
-    widgets.HBox([column_name, add_column_button, delete_column_button]),
-    widgets.HBox([search_text, search_button, next_button])
+    widgets.HBox([add_row_button, delete_row_button, add_column_button, delete_column_button]),
+    widgets.HBox([widgets.Label("Search:"), search_text, search_button, next_button])
 ])
 
-display(ui)
+js_code = """
+<script>
+document.addEventListener('click', function(event) {
+    if (event.target.classList.contains('ipysheet-cell')) {
+        var row = parseInt(event.target.getAttribute('data-row'));
+        var col = parseInt(event.target.getAttribute('data-col'));
+        IPython.notebook.kernel.execute(`handle_cell_click({'row': ${row}, 'column': ${col}})`);
+    }
+});
+</script>
+"""
 
-# Initialize an empty sheet
+comm = Comm(target_name='context_menu')
+comm.on_msg(lambda comm, msg: handle_cell_click(msg['content']['data']))
+
+display(ui)
 sheet = ipysheet.sheet(rows=0, columns=0)
 display(sheet)
+display(HTML(js_code))
 
 
 ////
