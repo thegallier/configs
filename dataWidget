@@ -1,0 +1,61 @@
+!pip install ipysheet
+import ipysheet
+import pandas as pd
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+import io
+
+
+# from google.colab import output
+# output.enable_custom_widget_manager()
+
+def load_csv(b):
+    file_name = load_file_name.value
+    if file_name:
+        df = pd.read_csv(file_name, dtype=str)  # Load all data as strings
+        load_dataframe(df)
+
+def load_dataframe(df):
+    global sheet
+    sheet = ipysheet.sheet(rows=df.shape[0], columns=df.shape[1])
+    for col in range(df.shape[1]):
+        for row in range(df.shape[0]):
+            ipysheet.cell(row, col, value=df.iat[row, col], sheet=sheet, type='text')
+    clear_output(wait=True)
+    display(ui)
+    display(sheet)
+
+def save_csv(b):
+    file_name = save_file_name.value
+    if file_name:
+        df = ipysheet.to_dataframe(sheet)
+        df.to_csv(file_name, index=False)
+        print(f"Sheet saved to {file_name}")
+
+def load_from_memory(b):
+    df_name = dataframe_name.value
+    if df_name:
+        try:
+            df = globals()[df_name]
+            load_dataframe(df)
+        except KeyError:
+            print(f"DataFrame '{df_name}' not found in memory.")
+
+load_file_name = widgets.Text(placeholder='Enter file name to load')
+save_file_name = widgets.Text(placeholder='Enter file name to save')
+dataframe_name = widgets.Text(placeholder='Enter DataFrame name')
+
+load_button = widgets.Button(description="Load CSV")
+load_button.on_click(load_csv)
+save_button = widgets.Button(description="Save to CSV")
+save_button.on_click(save_csv)
+load_mem_button = widgets.Button(description="Load DataFrame from Memory")
+load_mem_button.on_click(load_from_memory)
+
+ui = widgets.VBox([
+    widgets.HBox([widgets.Label("Load CSV:"), load_file_name, load_button]),
+    widgets.HBox([widgets.Label("Save CSV:"), save_file_name, save_button]),
+    widgets.HBox([widgets.Label("Load DataFrame from Memory:"), dataframe_name, load_mem_button])
+])
+
+display(ui)
