@@ -1,3 +1,157 @@
+//added search
+import ipysheet
+import pandas as pd
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+
+def load_csv(b):
+    file_name = load_file_name.value
+    if file_name:
+        try:
+            df = pd.read_csv(file_name, dtype=str)  # Load all data as strings
+            load_dataframe(df)
+        except Exception as e:
+            print(f"Error loading CSV file: {e}")
+
+def load_dataframe(df):
+    global sheet, df_backup
+    df_backup = df.copy()
+    sheet = ipysheet.sheet(rows=df.shape[0], columns=df.shape[1])
+    for col in range(df.shape[1]):
+        for row in range(df.shape[0]):
+            ipysheet.cell(row, col, value=df.iat[row, col], sheet=sheet, type='text')
+    clear_output(wait=True)
+    display(ui)
+    display(sheet)
+
+def save_csv(b):
+    file_name = save_file_name.value
+    if file_name:
+        try:
+            df = ipysheet.to_dataframe(sheet)
+            df.to_csv(file_name, index=False)
+            print(f"Sheet saved to {file_name}")
+        except Exception as e:
+            print(f"Error saving CSV file: {e}")
+
+def load_from_memory(b):
+    df_name = dataframe_name.value
+    if df_name:
+        try:
+            df = globals()[df_name]
+            load_dataframe(df)
+        except KeyError:
+            print(f"DataFrame '{df_name}' not found in memory.")
+        except Exception as e:
+            print(f"Error loading DataFrame from memory: {e}")
+
+def add_row(b):
+    index = int(row_index.value)
+    df = ipysheet.to_dataframe(sheet)
+    new_row = pd.Series(["" for _ in range(df.shape[1])], index=df.columns)
+    df = pd.concat([df.iloc[:index], new_row.to_frame().T, df.iloc[index:]]).reset_index(drop=True)
+    load_dataframe(df)
+
+def delete_row(b):
+    index = int(row_index.value)
+    df = ipysheet.to_dataframe(sheet)
+    if not df.empty and 0 <= index < df.shape[0]:
+        df = df.drop(index).reset_index(drop=True)
+    load_dataframe(df)
+
+def add_column(b):
+    col_name = column_name.value.strip()
+    df = ipysheet.to_dataframe(sheet)
+    if col_name == "":
+        col_name = str(len(df.columns))
+    df.insert(len(df.columns), col_name, [""] * len(df))
+    load_dataframe(df)
+
+def delete_column(b):
+    col_name = column_name.value.strip()
+    df = ipysheet.to_dataframe(sheet)
+    if not df.empty:
+        if col_name in df.columns:
+            df = df.drop(columns=[col_name])
+        else:
+            print(f"Column '{col_name}' not found.")
+    load_dataframe(df)
+
+search_results = []
+search_index = -1
+
+def search_cell(b):
+    global search_results, search_index
+    search_str = search_text.value
+    df = ipysheet.to_dataframe(sheet)
+    search_results = [(row, col) for row in range(df.shape[0]) for col in range(df.shape[1]) if search_str in str(df.iat[row, col])]
+    search_index = 0
+    if search_results:
+        highlight_cell(*search_results[search_index])
+    else:
+        print(f"No cells contain the string '{search_str}'")
+
+def next_search_result(b):
+    global search_index
+    if search_results:
+        search_index = (search_index + 1) % len(search_results)
+        highlight_cell(*search_results[search_index])
+    else:
+        print("No search results available. Perform a search first.")
+
+def highlight_cell(row, col):
+    for cell in sheet.cells:
+        cell.background_color = None
+    cell = next(cell for cell in sheet.cells if cell.row_start == row and cell.column_start == col)
+    cell.background_color = 'yellow'
+    clear_output(wait=True)
+    display(ui)
+    display(sheet)
+
+load_file_name = widgets.Text(placeholder='Enter file name to load')
+save_file_name = widgets.Text(placeholder='Enter file name to save')
+dataframe_name = widgets.Text(placeholder='Enter DataFrame name')
+row_index = widgets.BoundedIntText(value=0, min=0, description='Row index:')
+column_name = widgets.Text(placeholder='Enter column name or index', description='Column name:')
+
+load_button = widgets.Button(description="Load CSV")
+load_button.on_click(load_csv)
+save_button = widgets.Button(description="Save to CSV")
+save_button.on_click(save_csv)
+load_mem_button = widgets.Button(description="Load DataFrame from Memory")
+load_mem_button.on_click(load_from_memory)
+
+add_row_button = widgets.Button(description="Add Row")
+add_row_button.on_click(add_row)
+delete_row_button = widgets.Button(description="Delete Row")
+delete_row_button.on_click(delete_row)
+add_column_button = widgets.Button(description="Add Column")
+add_column_button.on_click(add_column)
+delete_column_button = widgets.Button(description="Delete Column")
+delete_column_button.on_click(delete_column)
+
+search_text = widgets.Text(placeholder='Enter search string')
+search_button = widgets.Button(description="Search")
+search_button.on_click(search_cell)
+next_button = widgets.Button(description="Next")
+next_button.on_click(next_search_result)
+
+ui = widgets.VBox([
+    widgets.HBox([widgets.Label("Load CSV:"), load_file_name, load_button]),
+    widgets.HBox([widgets.Label("Save CSV:"), save_file_name, save_button]),
+    widgets.HBox([widgets.Label("Load DataFrame from Memory:"), dataframe_name, load_mem_button]),
+    widgets.HBox([row_index, add_row_button, delete_row_button]),
+    widgets.HBox([column_name, add_column_button, delete_column_button]),
+    widgets.HBox([search_text, search_button, next_button])
+])
+
+display(ui)
+
+# Initialize an empty sheet
+sheet = ipysheet.sheet(rows=0, columns=0)
+display(sheet)
+
+
 ///added insert and delete
 
 import ipysheet
