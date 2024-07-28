@@ -1,0 +1,57 @@
+You’re all set to start building with Llama 3.1, Llama Guard 3 and Prompt Guard
+
+
+The models listed below are now available to you as a commercial license holder. By downloading a model, you are agreeing to the terms and conditions of the License and Acceptable Use Policy and Meta’s privacy policy.
+
+
+MODELS AVAILABLE
+
+With each model size, please find:
+
+Pretrained weights: These are base weights that can be finetuned, domain adapted with full flexibility
+Instruct weights: These weights are for the model that have been fine-tuned and aligned to follow instructions. They can be used as-is in chat applications or further finetuned and aligned for specific use cases
+Pretrained:
+
+Meta-Llama-3.1-8B
+Meta-Llama-3.1-70B
+Meta-Llama-3.1-405B
+Meta-Llama-3.1-405B-MP16
+Meta-Llama-3.1-405B-FP8
+Fine-tuned:
+
+Meta-Llama-3.1-8B-Instruct
+Meta-Llama-3.1-70B-Instruct
+Meta-Llama-3.1-405B-Instruct
+Meta-Llama-3.1-405B-Instruct-MP16
+Meta-Llama-3.1-405B-Instruct-FP8
+
+Llama-Guard-3-8B
+Llama-Guard-3-8B-INT8
+Prompt-Guard-86M
+
+NOTE 405B:
+
+Model requires significant storage and computational resources, occupying approximately 750GB of disk storage space and necessitating two nodes on MP16 for inferencing.
+We are releasing multiple versions of the 405B model to accommodate its large size and facilitate multiple deployment options: MP16 (Model Parallel 16) is the full version of BF16 weights. These weights can only be served on multiple nodes using pipelined parallel inference. At minimum it would need 2 nodes of 8 GPUs to serve.
+MP8 (Model Parallel 8) is also the full version of BF16 weights, but can be served on a single node with 8 GPUs by using dynamic FP8 (floating point 8) quantization. We are providing reference code for it. You can download these weights and experiment with different quantization techniques outside of what we are providing.
+FP8 (Floating Point 8) is a quantized version of the weights. These weights can be served on a single node with 8 GPUs by using the static FP quantization. We have provided reference code for it as well.
+HOW TO DOWNLOAD THE MODEL
+
+Visit the Llama repository for the model on GitHub and follow the instructions in the README to run the download.sh script.When the script asks for your unique custom URL, please copy and paste one of the following URLs. (Clicking on the URL itself does not access the model):
+https://llama3-1.llamameta.net/*?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiNXVsZDJwMGZsOHFpOXh1NG9wY2wxcnJqIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvbGxhbWEzLTEubGxhbWFtZXRhLm5ldFwvKiIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTcyMjExMTUxNH19fV19&Signature=PorsjuOSjq-bH6aOmTwsuqJ6UfSzAotVcT6mAuEp5DkuBwk0IIUmGhY-0b1cz6%7E8myEsvs4KkWxp2%7EL2A6W1DDqYsm%7ECdpxzqz3v-DtbgQr02YZgttL-K5XHjli-RTzVlFDEy0c5EIuMneF-zuZ4VJetTZaLdsrPYGSyE0MgVqm0NjfPlQnYCUE2HfD4ycGKUyLn39kEULXKB1UYzvVOsNVxKwi0GsZarvbW%7E6zppAorCAVFjwO9I%7ESDYTiZ00Q1BGqicYAHfqPp4j63neysdyAmCTr0MVof69UPjKV3W7kU4P7lAXmutypUOjeO%7Eb11CQX%7EJaqwqsP3qr0Vm9HJ9w__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=414606390961406
+
+Specify models to download.
+Please save copies of the unique custom URLs provided above, they will remain valid for 24 hours to download each model up to 5 times, and requests can be submitted multiple times. An email with the download instructions will also be sent to the email address you used to request the models.
+
+Now you’re ready to start building with Llama 3.1, Llama Guard 3 and Prompt Guard.
+
+
+HELPFUL TIPS:
+
+Please read the instructions in the GitHub repo and use the provided code examples to understand how to best interact with the models. In particular, for the fine-tuned models you must use appropriate formatting and correct system/instruction tokens to get the best results from the model.
+
+You can find additional information about how to responsibly deploy Llama models in our Responsible Use Guide.
+
+
+IF YOU NEED TO REPORT ISSUES:
+
