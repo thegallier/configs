@@ -1,0 +1,246 @@
+from collections import defaultdict
+from math import log
+import string
+
+
+def update_url_scores(old: dict[str, float], new: dict[str, float]):
+    """
+    Updates the old score dictionary with the values from the new score dictionary.
+    
+    Args:
+        old: Dictionary with existing scores (url -> score).
+        new: Dictionary with new scores to be added (url -> score).
+    
+    Returns:
+        Updated old dictionary with combined scores.
+    """
+    for url, score in new.items():
+        if url in old:
+            old[url] += score
+        else:
+            old[url] = score
+    return old
+
+
+def normalize_string(input_string: str) -> str:
+    """
+    Normalizes a string by removing punctuation, converting to lowercase, and reducing multiple spaces.
+    
+    Args:
+        input_string: The original string.
+    
+    Returns:
+        A normalized version of the string (lowercase, no punctuation, no extra spaces).
+    """
+    translation_table = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+    string_without_punc = input_string.translate(translation_table)
+    string_without_double_spaces = ' '.join(string_without_punc.split())
+    return string_without_double_spaces.lower()
+
+
+class SearchEngine:
+    """
+    Search engine class that uses BM25 for ranking, PageRank for link analysis, and Usage Ranking for page popularity.
+    
+    Attributes:
+        _index: Inverted index for words mapping to URLs.
+        _documents: Stores the content of each indexed URL.
+        _links: Stores the outbound links for each URL.
+        _usage_rankings: Stores the usage ranking (popularity) of each page.
+        page_rank_scores: Cached PageRank scores for each page.
+        k1: Parameter for BM25 algorithm, controlling term frequency scaling.
+        b: Parameter for BM25 algorithm, controlling document length normalization.
+        damping_factor: The damping factor for PageRank.
+        max_iterations: Maximum number of iterations for PageRank calculation.
+    """
+    
+    def __init__(self, k1: float = 1.5, b: float = 0.75, damping_factor: float = 0.85, max_iterations: int = 100):
+        """
+        Initializes the SearchEngine with BM25, PageRank, and usage ranking settings.
+        
+        Args:
+            k1: Parameter for BM25 (term frequency scaling).
+            b: Parameter for BM25 (document length normalization).
+            damping_factor: PageRank's damping factor, usually set between 0.8 and 0.9.
+            max_iterations: Maximum number of iterations for PageRank convergence.
+        """
+        self._index: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        self._documents: dict[str, str] = {}
+        self._links: dict[str, list[str]] = defaultdict(list)
+        self._usage_rankings: dict[str, float] = {}  # Usage ranking (popularity) for each page
+        self.k1 = k1
+        self.b = b
+        self.damping_factor = damping_factor
+        self.max_iterations = max_iterations
+        self.page_rank_scores = {}
+
+    @property
+    def posts(self) -> list[str]:
+        """Returns the list of all URLs (posts) that are indexed."""
+        return list(self._documents.keys())
+
+    @property
+    def number_of_documents(self) -> int:
+        """Returns the total number of documents indexed."""
+        return len(self._documents)
+
+    @property
+    def avdl(self) -> float:
+        """Returns the average document length across all indexed documents."""
+        return sum(len(d) for d in self._documents.values()) / len(self._documents)
+
+    import pickle
+
+class SearchEngine:
+    # Other parts of the class remain the same
+
+    def save_to_disk(self, filepath: str):
+        """
+        Saves the search engine's index, documents, links, PageRank scores, and usage rankings to a file.
+        
+        Args:
+            filepath: The path to the file where the data will be saved.
+        """
+        data = {
+            'index': self._index,
+            'documents': self._documents,
+            'links': self._links,
+            'usage_rankings': self._usage_rankings,
+            'page_rank_scores': self.page_rank_scores
+        }
+        with open(filepath, 'wb') as file:
+            pickle.dump(data, file)
+        print(f"Data saved to {filepath}")
+
+    def load_from_disk(self, filepath: str):
+        """
+        Loads the search engine's index, documents, links, PageRank scores, and usage rankings from a file.
+        
+        Args:
+            filepath: The path to the file from which the data will be loaded.
+        """
+        with open(filepath, 'rb') as file:
+            data = pickle.load(file)
+        
+        self._index = data.get('index', defaultdict(lambda: defaultdict(int)))
+        self._documents = data.get('documents', {})
+        self._links = data.get('links', defaultdict(list))
+        self._usage_rankings = data.get('usage_rankings', {})
+        self.page_rank_scores = data.get('page_rank_scores', {})
+        print(f"Data loaded from {filepath}")
+
+    def idf(self, kw: str) -> float:
+        """
+        Calculates the inverse document frequency (IDF) for a given keyword.
+        
+        Args:
+            kw: The keyword for which IDF needs to be calculated.
+        
+        Returns:
+            The IDF score for the keyword.
+        """
+        N = self.number_of_documents
+        n_kw = len(self.get_urls(kw))
+        return log((N - n_kw + 0.5) / (n_kw + 0.5) + 1)
+
+    def bm25(self, kw: str) -> dict[str, float]:
+        """
+        Calculates the BM25 score for a given keyword.
+        
+        Args:
+            kw: The keyword for which BM25 scores are calculated.
+        
+        Returns:
+            A dictionary of URLs with their respective BM25 scores.
+        """
+        result = {}
+        idf_score = self.idf(kw)
+        avdl = self.avdl
+        for url, freq in self.get_urls(kw).items():
+            numerator = freq * (self.k1 + 1)
+            denominator = freq + self.k1 * (
+                1 - self.b + self.b * len(self._documents[url]) / avdl
+            )
+            result[url] = idf_score * numerator / denominator
+        return result
+
+    def search(self, query: str) -> dict[str, float]:
+        """
+        Performs a search for a given query, combining BM25, PageRank, and Usage Ranking scores.
+        
+        Args:
+            query: The search query string.
+        
+        Returns:
+            A dictionary of URLs with their final combined scores.
+        """
+        keywords = normalize_string(query).split(" ")
+        url_scores: dict[str, float] = {}
+        
+        # Calculate BM25 scores for each keyword
+        for kw in keywords:
+            kw_urls_score = self.bm25(kw)
+            url_scores = update_url_scores(url_scores, kw_urls_score)
+
+        # Calculate PageRank if not already calculated
+        if not self.page_rank_scores:
+            self.calculate_page_rank()
+
+        # Combine BM25, PageRank, and Usage Ranking
+        for url in url_scores:
+            page_rank_score = self.page_rank_scores.get(url, 0)
+            usage_ranking = self._usage_rankings.get(url, 0)
+            url_scores[url] = 0.5 * url_scores[url] + 0.3 * page_rank_score + 0.2 * usage_ranking  # Adjust weights as needed
+
+        return url_scores
+
+    def index(self, url: str, content: str, links: list[str], usage_ranking: float) -> None:
+        """
+        Indexes a new document, including its content, outbound links, and usage ranking.
+        
+        Args:
+            url: The URL of the document.
+            content: The textual content of the document.
+            links: List of URLs linked from this document.
+            usage_ranking: The popularity/usage ranking of the page.
+        """
+        self._documents[url] = content
+        self._links[url] = links
+        self._usage_rankings[url] = usage_ranking
+        words = normalize_string(content).split(" ")
+        for word in words:
+            self._index[word][url] += 1
+
+    def bulk_index(self, documents: list[tuple[str, str, list[str], float]]):
+        """
+        Indexes multiple documents in bulk.
+        
+        Args:
+            documents: A list of tuples (url, content, links, usage_ranking).
+        """
+        for url, content, links, usage_ranking in documents:
+            self.index(url, content, links, usage_ranking)
+
+    def get_urls(self, keyword: str) -> dict[str, int]:
+        """
+        Retrieves all URLs that contain a given keyword.
+        
+        Args:
+            keyword: The keyword to search for.
+        
+        Returns:
+            A dictionary of URLs with the frequency of the keyword.
+        """
+        keyword = normalize_string(keyword)
+        return self._index[keyword]
+
+    def calculate_page_rank(self):
+        """
+        Calculates PageRank scores for all indexed documents using the iterative PageRank algorithm.
+        """
+        num_pages = len(self._documents)
+        page_rank = {url: 1 / num_pages for url in self._documents}
+        outbound_links = {url: len(links) for url, links in self._links.items()}
+
+        for _ in range(self.max_iterations):
+            new_rank = {url: (1 - self.damping_factor) / num_pages for url in self._documents}
