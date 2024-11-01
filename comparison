@@ -1,3 +1,213 @@
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+from collections import deque
+import time
+import sys
+import threading
+from urllib.robotparser import RobotFileParser
+
+class WebCrawler:
+    def __init__(self, base_url, max_depth=2, delay=1, max_threads=5):
+        """
+        Initializes the web crawler.
+
+        Parameters:
+            base_url (str): The starting URL for crawling.
+            max_depth (int): Maximum depth to crawl.
+            delay (float): Delay in seconds between requests to the same domain.
+            max_threads (int): Maximum number of concurrent threads.
+        """
+        self.base_url = base_url
+        self.parsed_base = urlparse(base_url)
+        self.base_domain = self.parsed_base.netloc
+        self.max_depth = max_depth
+        self.delay = delay
+        self.max_threads = max_threads
+        self.visited = set()
+        self.lock = threading.Lock()
+        self.robot_parser = self.get_robot_parser()
+
+    def get_robot_parser(self):
+        """
+        Initializes the robot parser to respect robots.txt.
+
+        Returns:
+            RobotFileParser object.
+        """
+        robots_url = urljoin(self.base_url, '/robots.txt')
+        rp = RobotFileParser()
+        try:
+            rp.set_url(robots_url)
+            rp.read()
+        except Exception as e:
+            print(f"Could not read robots.txt: {e}", file=sys.stderr)
+        return rp
+
+    def can_fetch(self, url):
+        """
+        Checks if the crawler is allowed to fetch the URL based on robots.txt.
+
+        Parameters:
+            url (str): The URL to check.
+
+        Returns:
+            bool: True if allowed, False otherwise.
+        """
+        if self.robot_parser:
+            return self.robot_parser.can_fetch("*", url)
+        return True  # If robots.txt couldn't be read, proceed cautiously
+
+    def get_all_links(self, current_url):
+        """
+        Fetches all valid HTTP/HTTPS links from the current URL.
+
+        Parameters:
+            current_url (str): The URL to fetch links from.
+
+        Returns:
+            set: A set of absolute URLs found on the page.
+        """
+        try:
+            headers = {'User-Agent': 'Mozilla/5.0 (compatible; WebCrawler/1.0)'}
+            response = requests.get(current_url, headers=headers, timeout=10)
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching {current_url}: {e}", file=sys.stderr)
+            return set()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        a_tags = soup.find_all('a', href=True)
+        links = set()
+
+        for tag in a_tags:
+            href = tag.get('href')
+            full_url = urljoin(current_url, href)
+            parsed_url = urlparse(full_url)
+
+            # Normalize URL (remove fragments, query parameters can be kept if needed)
+            normalized_url = parsed_url.scheme + "://" + parsed_url.netloc + parsed_url.path
+
+            if parsed_url.scheme in ['http', 'https']:
+                # Ensure it's within the same domain
+                if parsed_url.netloc == self.base_domain:
+                    links.add(normalized_url)
+
+        return links
+
+    def crawl(self):
+        """
+        Starts the crawling process and returns all found links.
+        """
+        queue = deque()
+        queue.append((self.base_url, 0))
+        self.visited.add(self.base_url)
+        all_links = set()
+
+        while queue:
+            current_url, depth = queue.popleft()
+            print(f"Crawling: {current_url} | Depth: {depth}")
+
+            if not self.can_fetch(current_url):
+                print(f"Blocked by robots.txt: {current_url}", file=sys.stderr)
+                continue
+
+            links = self.get_all_links(current_url)
+            all_links.update(links)
+
+            if depth < self.max_depth:
+                for link in links:
+                    with self.lock:
+                        if link not in self.visited:
+                            self.visited.add(link)
+                            queue.append((link, depth + 1))
+
+            time.sleep(self.delay)  # Respectful crawling
+
+        return list(all_links)
+
+    def crawl_multithreaded(self):
+        """
+        Starts the crawling process using multithreading and returns all found links.
+        """
+        queue = deque()
+        queue.append((self.base_url, 0))
+        self.visited.add(self.base_url)
+        all_links = set()
+        threads = []
+
+        def worker():
+            while True:
+                with self.lock:
+                    if not queue:
+                        return
+                    current_url, depth = queue.popleft()
+
+                print(f"Crawling: {current_url} | Depth: {depth}")
+
+                if not self.can_fetch(current_url):
+                    print(f"Blocked by robots.txt: {current_url}", file=sys.stderr)
+                    continue
+
+                links = self.get_all_links(current_url)
+                all_links.update(links)
+
+                if depth < self.max_depth:
+                    with self.lock:
+                        for link in links:
+                            if link not in self.visited:
+                                self.visited.add(link)
+                                queue.append((link, depth + 1))
+
+                time.sleep(self.delay)  # Respectful crawling
+
+        # Start threads
+        for _ in range(self.max_threads):
+            thread = threading.Thread(target=worker)
+            thread.start()
+            threads.append(thread)
+
+        # Wait for all threads to finish
+        for thread in threads:
+            thread.join()
+
+        return list(all_links)
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="A simple web crawler to extract all links recursively.")
+    parser.add_argument("base_url", help="The base URL to start crawling from.")
+    parser.add_argument("--max_depth", type=int, default=2, help="Maximum depth to crawl. Default is 2.")
+    parser.add_argument("--delay", type=float, default=1, help="Delay between requests in seconds. Default is 1.")
+    parser.add_argument("--multithreaded", action='store_true', help="Enable multithreaded crawling.")
+    parser.add_argument("--max_threads", type=int, default=5, help="Maximum number of threads if multithreaded. Default is 5.")
+
+    args = parser.parse_args()
+
+    crawler = WebCrawler(
+        base_url=args.base_url,
+        max_depth=args.max_depth,
+        delay=args.delay,
+        max_threads=args.max_threads
+    )
+
+    start_time = time.time()
+
+    if args.multithreaded:
+        print("Starting multithreaded crawl...")
+        all_links = crawler.crawl_multithreaded()
+    else:
+        print("Starting single-threaded crawl...")
+        all_links = crawler.crawl()
+
+    end_time = time.time()
+
+    print(f"\nCrawling completed in {end_time - start_time:.2f} seconds.")
+    print(f"Total unique links found: {len(all_links)}\n")
+
+    for link in sorted(all_links):
+        print(link)
 
 ///
 
