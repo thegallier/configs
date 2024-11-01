@@ -1,3 +1,55 @@
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+import sys
+
+def get_all_links(base_url):
+    """
+    Fetches all the hyperlinks from the given base URL and returns a list of absolute URLs.
+
+    Parameters:
+        base_url (str): The base URL to fetch links from.
+
+    Returns:
+        list: A list of absolute URLs found on the base page.
+    """
+    try:
+        # Send a GET request to the base URL
+        response = requests.get(base_url)
+        response.raise_for_status()  # Raise an error for bad status codes
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching {base_url}: {e}", file=sys.stderr)
+        return []
+
+    # Parse the HTML content using BeautifulSoup
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Find all <a> tags with an href attribute
+    a_tags = soup.find_all('a', href=True)
+
+    links = set()  # Use a set to avoid duplicates
+
+    for tag in a_tags:
+        href = tag.get('href')
+
+        # Resolve relative URLs to absolute URLs
+        full_url = urljoin(base_url, href)
+
+        # Optionally, filter out URLs that are not HTTP or HTTPS
+        parsed_url = urlparse(full_url)
+        if parsed_url.scheme in ['http', 'https']:
+            links.add(full_url)
+
+    return list(links)
+
+# Example usage
+if __name__ == "__main__":
+    base_url = input("Enter the base URL: ").strip()
+    links = get_all_links(base_url)
+    print(f"Found {len(links)} links:")
+    for link in links:
+        print(link)
+
 
 absl-py==1.4.0
 accelerate==0.32.1
