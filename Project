@@ -1,0 +1,141 @@
+MemGPT is a system that enables large language models (LLMs) to manage extended contexts by emulating operating system memory hierarchies. It divides memory into main context (active prompt tokens) and external context (persistent storage), allowing the LLM to dynamically read from and write to these storage tiers. This design facilitates the retrieval of pertinent historical data and the eviction of less relevant information, effectively providing the illusion of an infinite context window. By employing function calls to handle control flow and memory management, MemGPT allows LLMs to maintain continuity over long-term interactions and analyze documents that exceed their native context limitations. ￼
+
+To generate user-specific responses, MemGPT can store personalized information in its external context. When a user engages with the system, the LLM can retrieve this stored data and incorporate it into the prompt, tailoring responses to the individual’s preferences and history. This approach ensures that interactions are contextually relevant and personalized, enhancing the user experience by leveraging the system’s managed memory to maintain and utilize user-specific information effectively.
+
+For a comprehensive understanding of MemGPT’s architecture and capabilities, you can access the full paper here: ￼
+
+
+
+direct Preference Optimization (DPO) is a technique for fine-tuning large language models (LLMs) to align with human preferences without the complexities of traditional reinforcement learning methods. Unlike Reinforcement Learning from Human Feedback (RLHF), which involves training a separate reward model and then optimizing the LLM to maximize this estimated reward, DPO directly adjusts the LLM using preference data. This approach simplifies the alignment process, enhancing stability and computational efficiency. Empirical studies have demonstrated that DPO can match or surpass the performance of RLHF in tasks such as sentiment control, summarization, and dialogue generation, while being more straightforward to implement and train. ￼
+
+
+Literature List
+
+	1.	UMAP: Uniform Manifold Approximation and Projection
+	•	McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. arXiv:1802.03426
+	2.	Riemannian Manifolds
+	•	Lee, J. M. (2006). Riemannian Manifolds: An Introduction to Curvature. Springer.
+	3.	Gaussian Mixture Models
+	•	Reynolds, D. A. (2009). Gaussian Mixture Models. Encyclopedia of Biometrics, 659-663.
+	4.	Retrieval-Augmented Generation (RAG)
+	•	Lewis, P., et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. Advances in Neural Information Processing Systems, 33.
+	5.	Sentence Transformers
+	•	Reimers, N., & Gurevych, I. (2019). Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. arXiv:1908.10084
+	6.	Large Language Models (LLMs)
+	•	Brown, T., et al. (2020). Language Models are Few-Shot Learners. Advances in Neural Information Processing Systems, 33.
+	7.	Agent-Based Reasoning in LLMs
+	•	Mialon, G., et al. (2023). Augmented Language Models: A Survey. arXiv:2302.07842
+	8.	Asynchronous Agent Operations
+	•	Microsoft. (2023). Azure OpenAI Service Documentation. Retrieved from https://azure.microsoft.com/en-us/services/openai/
+	9.	Model Merging Techniques
+	•	Wang, R., et al. (2023). Efficient Model Merging and Fine-Tuning for Natural Language Processing. arXiv:2303.00123
+	10.	Data Augmentation in NLP
+	•	Feng, S., et al. (2021). A Survey of Data Augmentation Approaches for NLP. Proceedings of the 29th International Conference on Computational Linguistics.
+
+Future Plans
+
+Building upon the current achievements, the project aims to implement the following enhancements:
+
+Fine-Tuning Sentence Transformers
+
+	•	Objective: Improve the relevance of retrieved information chunks.
+	•	Approach: Customize transformers to better capture the semantics specific to the dp library.
+
+Adding Memory to the System
+
+	•	Purpose: Deliver more personalized and context-aware answers.
+	•	Method: Incorporate user profiles to distinguish between different user needs (e.g., code vs. Excel users, rates vs. credit users).
+
+Utilizing Agents for Iterative Improvement
+
+	•	Goal: Test dp calls and refine answers for optimal solutions.
+	•	Technology: Leverage asynchronous agent capabilities offered by platforms like Microsoft’s latest offerings.
+
+Integration of User Feedback
+
+	•	Strategy: Continuously incorporate insights from users to enhance system functionality.
+	•	Benefit: Ensure the system evolves in alignment with user needs.
+
+Exploiting Large Context Windows in Newer Models
+
+	•	Advantage: Guide the LLM to produce more relevant results through multi-step reasoning.
+	•	Outcome: Improve answer accuracy and expand the complexity of queries the system can handle.
+
+Integration of Code and Data Augmentation
+
+	•	Aim: Enrich the system’s knowledge base with practical code examples.
+	•	Technique: Augment input data to cover a broader range of scenarios and use cases.
+
+Model Merging and Optimization
+
+	•	Objective: Combine the strengths of different models to enhance performance.
+	•	Challenge: Ensure seamless integration without compromising individual model capabilities.
+
+Expanding the Project Scope
+
+	•	Vision: Utilize advancements in AI to broaden the functionalities and applications of the system.
+	•	Expectation: Achieve more relevant answers and cater to a wider array of user needs.
+
+Enhancing Retrieval Results
+
+	•	Reordering RAG Results with User Usage Data: Prioritizes information based on actual user interactions with the dp library.
+	•	Best-of-3 Approach with Fine-Tuned Models: Improves answer quality by selecting the best response from multiple models.
+	•	Language Model Integration: Combines answers using LLMs for coherent and comprehensive responses.
+
+User Feedback Collection
+
+	•	Engagement with David’s Team: Gathered insights to refine the system based on real-world usage and requirements.
+	•	Deployment in Arena: Provided a testing ground to evaluate system performance and gather additional feedback.
+
+Challenges
+
+Despite its utility, the dp library faces several challenges that hinder its optimal use:
+	1.	Inconsistent Naming Conventions and Function Signatures: Over time, the lack of standardization has led to confusion and errors.
+	2.	Accumulation of Legacy Arguments: Outdated arguments persist, complicating code maintenance and usability.
+	3.	Duplicated and Unused Functions: Redundant functions clutter the library, making navigation and function selection inefficient.
+	4.	Discrepancies Between Excel and Python Versions: Differences in functionality and interfaces impede seamless integration and user experience.
+	5.	Limited Data Availability: Unlike popular open-source packages, the dp library lacks extensive online resources, limiting user support and community-driven improvements.
+	6.	Integration with Other Packages (e.g., Scooby): Determining whether dependent packages should be included in training datasets adds complexity.
+	7.	Model Fine-Tuning Challenges: Enhancing models without sacrificing existing capabilities in packages like Pandas and NumPy is difficult.
+	8.	Limitations of Smaller Models: While smaller LLMs offer faster response times, they have reduced capacity for data assimilation, affecting performance.
+
+
+Introduction
+
+Background
+
+In the dynamic realm of fixed income securities, accurate pricing and risk management are paramount. The dp library has been a cornerstone for Citi in this domain, providing essential tools and functions that facilitate these complex processes. Its accessibility via both Excel and Python makes it a versatile resource for a diverse user base.
+
+Importance of the dp Library
+
+The dp library’s significance lies in its adaptability:
+	•	Sales and Trading Teams: Utilize the Excel interface for rapid calculations and decision-making.
+	•	Development Teams: Integrate the library into larger systems for comprehensive risk assessment and regulatory compliance.
+	•	Quantitative Developers: Leverage the Python interface to build advanced analytics and models.
+
+Project Description: Enhancing the dp Library for Fixed Income Securities Pricing and Risk Management
+
+Executive Summary
+
+The dp library is a proprietary tool utilized by Citi for the pricing and risk management of fixed income securities. Accessible via Excel and Python, it serves thousands of users across markets. These users span a wide range—from sales and trading professionals using Excel, development teams integrating the library into risk and regulatory systems, to quantitative developers crafting sophisticated analytics.
+
+Despite its widespread use, the dp library faces several challenges, including inconsistent naming conventions, legacy code complexities, and discrepancies between its Excel and Python versions. To address these issues, we have developed a retrieval-augmented question-answering system combined with a fine-tuned large language model (LLM). This system leverages advanced clustering techniques, specifically a method called Raptor, to enhance information retrieval and user experience. Our future plans involve refining this system further by integrating user feedback, enhancing model capabilities, and expanding the project’s scope to harness advancements in AI.
+Current Achievements
+
+To address these challenges, significant progress has been made:
+
+Development of a Retrieval-Augmented Question Answering System
+
+	•	Integration with Fine-Tuned LLM: Combines the strengths of LLMs with retrieval mechanisms to provide accurate, context-aware responses.
+	•	Generated a Dataset of 20,000 Q&A Pairs: Standardizes language and improves model training by summarizing wiki packages and test case code.
+
+Implementation of Raptor for Hierarchical Clustering
+
+	•	Based on UMAP and Riemannian Manifolds: Captures the intrinsic geometry of data for better clustering.
+	•	Gaussian Mixture Modeling: Allows information chunks to belong to multiple categories, enhancing retrieval relevance.
+Diagram 1: Raptor Clustering Method
+
+Conclusion
+
+The dp library is integral to Citi’s operations in fixed income securities pricing and risk management. By addressing its current challenges through advanced AI techniques and user-centric enhancements, we can significantly improve its usability and efficiency. The strides made thus far lay a solid foundation, and the planned future developments promise to deliver a state-of-the-art system that meets and exceeds the diverse needs of its users.
+
