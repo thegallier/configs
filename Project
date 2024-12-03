@@ -1,3 +1,8 @@
+
+ {
+  "chat_template": "{% if not add_generation_prompt is defined %}{% set add_generation_prompt = false %}{% endif %}{% for message in messages %}<|im_start|>{{ message['role'] }}\n{% if message['content'] is string %}{{ message['content'] }}{% elif message['content'] is iterable %}{% for item in message['content'] %}{% if item['type'] == 'text' %}{{ item['text'] }}{% elif item['type'] == 'image' %}<fim_prefix><|img|><fim_suffix>{% endif %}{% endfor %}{% endif %}<|im_end|>\n{% endfor %}{% if add_generation_prompt %}<|im_start|>assistant\n{% endif %}"
+}
+
 Integrating Microsoft’s Magentic-One and Anthropic’s Model Context Protocol (MCP) into a chatbot designed to assist users and developers with a proprietary library can significantly enhance its capabilities. Here’s how each framework can be utilized:
 
 Microsoft’s Magentic-One
