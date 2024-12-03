@@ -11,40 +11,7 @@ direct Preference Optimization (DPO) is a technique for fine-tuning large langua
 
 Literature List
 
-	1.	UMAP: Uniform Manifold Approximation and Projection
-	•	McInnes, L., Healy, J., & Melville, J. (2018). UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction. arXiv:1802.03426
-	2.	Riemannian Manifolds
-	•	Lee, J. M. (2006). Riemannian Manifolds: An Introduction to Curvature. Springer.
-	3.	Gaussian Mixture Models
-	•	Reynolds, D. A. (2009). Gaussian Mixture Models. Encyclopedia of Biometrics, 659-663.
-	4.	Retrieval-Augmented Generation (RAG)
-	•	Lewis, P., et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. Advances in Neural Information Processing Systems, 33.
-	5.	Sentence Transformers
-	•	Reimers, N., & Gurevych, I. (2019). Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. arXiv:1908.10084
-	6.	Large Language Models (LLMs)
-	•	Brown, T., et al. (2020). Language Models are Few-Shot Learners. Advances in Neural Information Processing Systems, 33.
-	7.	Agent-Based Reasoning in LLMs
-	•	Mialon, G., et al. (2023). Augmented Language Models: A Survey. arXiv:2302.07842
-	8.	Asynchronous Agent Operations
-	•	Microsoft. (2023). Azure OpenAI Service Documentation. Retrieved from https://azure.microsoft.com/en-us/services/openai/
-	9.	Model Merging Techniques
-	•	Wang, R., et al. (2023). Efficient Model Merging and Fine-Tuning for Natural Language Processing. arXiv:2303.00123
-	10.	Data Augmentation in NLP
-	•	Feng, S., et al. (2021). A Survey of Data Augmentation Approaches for NLP. Proceedings of the 29th International Conference on Computational Linguistics.
-
-Future Plans
-
-Building upon the current achievements, the project aims to implement the following enhancements:
-
-Fine-Tuning Sentence Transformers
-
-	•	Objective: Improve the relevance of retrieved information chunks.
-	•	Approach: Customize transformers to better capture the semantics specific to the dp library.
-
-Adding Memory to the System
-
-	•	Purpose: Deliver more personalized and context-aware answers.
-	•	Method: Incorporate user profiles to distinguish between different user needs (e.g., code vs. Excel users, rates vs. credit users).
+	1.	UMAP: rporate user profiles to distinguish between different user needs (e.g., code vs. Excel users, rates vs. credit users).
 
 Utilizing Agents for Iterative Improvement
 
@@ -89,24 +56,6 @@ User Feedback Collection
 
 Challenges
 
-Despite its utility, the dp library faces several challenges that hinder its optimal use:
-	1.	Inconsistent Naming Conventions and Function Signatures: Over time, the lack of standardization has led to confusion and errors.
-	2.	Accumulation of Legacy Arguments: Outdated arguments persist, complicating code maintenance and usability.
-	3.	Duplicated and Unused Functions: Redundant functions clutter the library, making navigation and function selection inefficient.
-	4.	Discrepancies Between Excel and Python Versions: Differences in functionality and interfaces impede seamless integration and user experience.
-	5.	Limited Data Availability: Unlike popular open-source packages, the dp library lacks extensive online resources, limiting user support and community-driven improvements.
-	6.	Integration with Other Packages (e.g., Scooby): Determining whether dependent packages should be included in training datasets adds complexity.
-	7.	Model Fine-Tuning Challenges: Enhancing models without sacrificing existing capabilities in packages like Pandas and NumPy is difficult.
-	8.	Limitations of Smaller Models: While smaller LLMs offer faster response times, they have reduced capacity for data assimilation, affecting performance.
-
-
-Introduction
-
-Background
-
-In the dynamic realm of fixed income securities, accurate pricing and risk management are paramount. The dp library has been a cornerstone for Citi in this domain, providing essential tools and functions that facilitate these complex processes. Its accessibility via both Excel and Python makes it a versatile resource for a diverse user base.
-
-Importance of the dp Library
 
 The dp library’s significance lies in its adaptability:
 	•	Sales and Trading Teams: Utilize the Excel interface for rapid calculations and decision-making.
