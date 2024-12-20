@@ -1,0 +1,304 @@
+import requests
+from bs4 import BeautifulSoup
+import duckdb
+import networkx as nx
+from typing import List, Dict, Any, Tuple
+import re
+
+# Mock functions for LLM interfaces
+def askLlama(prompt: str) -> str:
+    """
+    Mock function to simulate LLM responses.
+    Replace with actual implementation.
+    """
+    # For example purposes, return a static response
+    return "This is a simulated response from LLM based on the prompt."
+
+def embedText(text: str) -> List[float]:
+    """
+    Mock function to generate text embeddings.
+    Replace with actual implementation.
+    """
+    # For example purposes, return a list of zeros
+    return [0.0] * 768  # Assuming 768-dimensional embeddings
+
+def searchBm25(query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+    """
+    Mock function to perform BM25 search.
+    Replace with actual implementation.
+    """
+    # For example purposes, return an empty list
+    return []
+
+# Initialize DuckDB connection
+conn = duckdb.connect('library.db')
+
+# Create necessary tables
+def initialize_database(connection):
+    connection.execute("""
+    CREATE TABLE IF NOT EXISTS pages (
+        page_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT UNIQUE,
+        content TEXT,
+        embedding FLOAT[]
+    );
+    """)
+    
+    connection.execute("""
+    CREATE TABLE IF NOT EXISTS functions (
+        function_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        page_id INTEGER,
+        name TEXT,
+        description TEXT,
+        arguments TEXT,
+        embedding FLOAT[],
+        FOREIGN KEY(page_id) REFERENCES pages(page_id)
+    );
+    """)
+    
+    connection.execute("""
+    CREATE TABLE IF NOT EXISTS links (
+        from_page INTEGER,
+        to_page INTEGER,
+        FOREIGN KEY(from_page) REFERENCES pages(page_id),
+        FOREIGN KEY(to_page) REFERENCES pages(page_id)
+    );
+    """)
+    
+    connection.execute("""
+    CREATE TABLE IF NOT EXISTS usage_dictionary (
+        function_name TEXT PRIMARY KEY,
+        usage TEXT
+    );
+    """)
+
+# Function to extract data from a webpage
+def extract_page_data(url: str) -> Dict[str, Any]:
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching {url}: {e}")
+        return {}
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Extract page content
+    content = soup.get_text(separator=' ', strip=True)
+    
+    # Extract function details
+    functions = []
+    function_elements = soup.find_all(class_='function')
+    for func in function_elements:
+        name_elem = func.find(class_='name')
+        desc_elem = func.find(class_='description')
+        args_elem = func.find(class_='arguments')
+        
+        if name_elem and desc_elem and args_elem:
+            name = name_elem.get_text(strip=True)
+            description = desc_elem.get_text(strip=True)
+            arguments = args_elem.get_text(strip=True)
+            functions.append({
+                'name': name,
+                'description': description,
+                'arguments': arguments
+            })
+    
+    # Extract links to other pages
+    links = []
+    for a_tag in soup.find_all('a', href=True):
+        href = a_tag['href']
+        # Convert relative URLs to absolute if necessary
+        if not href.startswith('http'):
+            href = requests.compat.urljoin(url, href)
+        links.append(href)
+    
+    return {
+        'url': url,
+        'content': content,
+        'functions': functions,
+        'links': links
+    }
+
+# Function to store page data in DuckDB
+def store_page(connection, page_data: Dict[str, Any]) -> int:
+    if not page_data:
+        return -1  # Invalid page data
+    
+    url = page_data['url']
+    content = page_data['content']
+    embedding = embedText(content)
+    
+    # Insert or ignore the page
+    connection.execute("""
+        INSERT INTO pages (url, content, embedding) 
+        VALUES (?, ?, ?)
+        ON CONFLICT(url) DO NOTHING;
+    """, (url, content, embedding))
+    
+    # Retrieve page_id
+    result = connection.execute("SELECT page_id FROM pages WHERE url = ?", (url,)).fetchone()
+    if result:
+        page_id = result[0]
+    else:
+        print(f"Failed to retrieve page_id for URL: {url}")
+        return -1
+    
+    # Insert functions
+    for func in page_data['functions']:
+        func_name = func['name']
+        func_desc = func['description']
+        func_args = func['arguments']
+        func_embedding = embedText(func_desc)
+        
+        connection.execute("""
+            INSERT INTO functions (page_id, name, description, arguments, embedding)
+            VALUES (?, ?, ?, ?, ?);
+        """, (page_id, func_name, func_desc, func_args, func_embedding))
+    
+    return page_id
+
+# Function to store link relationships
+def store_links(connection, from_page_id: int, links: List[str]) -> None:
+    for link in links:
+        # Check if the linked page already exists
+        result = connection.execute("SELECT page_id FROM pages WHERE url = ?", (link,)).fetchone()
+        if result:
+            to_page_id = result[0]
+        else:
+            # Insert the linked page with empty content for now
+            connection.execute("""
+                INSERT INTO pages (url, content, embedding) 
+                VALUES (?, ?, ?)
+                ON CONFLICT(url) DO NOTHING;
+            """, (link, '', [0.0] * 768))
+            to_page_id = connection.execute("SELECT page_id FROM pages WHERE url = ?", (link,)).fetchone()[0]
+        
+        # Insert the link relationship
+        connection.execute("""
+            INSERT INTO links (from_page, to_page) 
+            VALUES (?, ?);
+        """, (from_page_id, to_page_id))
+
+# Function to traverse the website and store data
+def traverse_and_store(start_url: str, max_depth: int = 5):
+    visited = set()
+    queue: List[Tuple[str, int]] = [(start_url, 0)]
+    G = nx.DiGraph()
+    
+    while queue:
+        current_url, depth = queue.pop(0)
+        if current_url in visited or depth > max_depth:
+            continue
+        print(f"Processing ({depth}/{max_depth}): {current_url}")
+        visited.add(current_url)
+        
+        page_data = extract_page_data(current_url)
+        if not page_data:
+            continue
+        
+        page_id = store_page(conn, page_data)
+        if page_id == -1:
+            continue
+        
+        G.add_node(current_url, page_id=page_id)
+        
+        # Store link relationships
+        store_links(conn, page_id, page_data['links'])
+        
+        # Add new links to the queue
+        for link in page_data['links']:
+            if link not in visited:
+                queue.append((link, depth + 1))
+    
+    print("Traversal and storage completed.")
+
+# Function to extract function names from a query
+def extract_function_names_from_query(query: str) -> List[str]:
+    """
+    Simple heuristic to extract function names from the query.
+    This can be enhanced using NLP techniques.
+    """
+    # Example: Extract words that follow 'function' keyword
+    return re.findall(r'function\s+(\w+)', query, re.IGNORECASE)
+
+# Function to perform beam search combining BM25 and Vector Search
+def beam_search_with_usage(query: str, beam_width: int = 5) -> str:
+    # Perform BM25 search
+    bm25_results = searchBm25(query, top_k=beam_width)
+    bm25_page_ids = [result['page_id'] for result in bm25_results]
+    
+    # Perform Vector search
+    query_embedding = embedText(query)
+    vector_results = conn.execute("""
+        SELECT page_id, euclidean_distance(embedding, ?) AS distance
+        FROM pages
+        ORDER BY distance ASC
+        LIMIT ?;
+    """, (query_embedding, beam_width)).fetchall()
+    vector_page_ids = [row[0] for row in vector_results]
+    
+    # Combine results
+    combined_page_ids = list(set(bm25_page_ids + vector_page_ids))
+    
+    if not combined_page_ids:
+        return "No relevant information found."
+    
+    # Retrieve content from combined pages
+    placeholders = ','.join(['?'] * len(combined_page_ids))
+    query_sql = f"SELECT content FROM pages WHERE page_id IN ({placeholders})"
+    contents = [row[0] for row in conn.execute(query_sql, combined_page_ids).fetchall()]
+    
+    # Retrieve relevant usage information
+    function_names = extract_function_names_from_query(query)
+    if function_names:
+        placeholders = ','.join(['?'] * len(function_names))
+        usage_query = f"SELECT usage FROM usage_dictionary WHERE function_name IN ({placeholders})"
+        usage_infos = [row[0] for row in conn.execute(usage_query, function_names).fetchall()]
+        usage_context = " ".join(usage_infos)
+    else:
+        usage_context = ""
+    
+    # Combine contents and usage context
+    combined_context = " ".join(contents)
+    if usage_context:
+        combined_context += "\n" + usage_context
+    
+    # Create prompt for LLM
+    llm_prompt = f"Using the following information, answer the user's query:\n\n{combined_context}\n\nQuery: {query}"
+    
+    # Get response from LLM
+    response = askLlama(llm_prompt)
+    
+    return response
+
+# Function to answer user queries
+def answer_query(query: str) -> str:
+    return beam_search_with_usage(query)
+
+# Initialize the database
+initialize_database(conn)
+
+# Example usage:
+if __name__ == "__main__":
+    # Step 1: Traverse and store website data
+    start_page_url = 'https://example.com/main'  # Replace with your main page URL
+    traverse_and_store(start_page_url, max_depth=3)
+    
+    # Step 2: Populate usage dictionary (this would typically be done separately)
+    usage_entries = [
+        ('function_one', 'Function_one is used to perform task X by accepting parameters A and B.'),
+        ('function_two', 'Function_two facilitates task Y by requiring parameter C.')
+    ]
+    for func_name, usage in usage_entries:
+        conn.execute("""
+            INSERT INTO usage_dictionary (function_name, usage) 
+            VALUES (?, ?)
+            ON CONFLICT(function_name) DO UPDATE SET usage = EXCLUDED.usage;
+        """, (func_name, usage))
+    
+    # Step 3: Answer a user query
+    user_question = "How do I use function_one to perform task X?"
+    answer = answer_query(user_question)
+    print("Answer to the user query:")
+    print(answer)
