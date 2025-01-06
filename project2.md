@@ -1,6 +1,4 @@
-# Paper-Style Write-Up: Integrating Time2Vec-Based Transformers
-
-Below is an updated paper-style write-up that **incorporates the Time2Vec-based Transformer approach** from “*Portfolio Transformer for Attention-Based Asset Allocation*” by Damian Kisiel and Denise Gorse (University College London), treating it as a **fourth alternative** alongside Signature Methods, Matrix Motifs, and DTW. The paper maintains the same structure, highlighting how Transformers and Mamba focus on orders/trades conditioned on the current levels, while the other methods capture co-integration among price levels. We now include the **Time2Vec encoding** in Transformers as a distinct approach for time-series embedding in financial contexts.
+# Advanced Feature Creation Methods for financial Time Series.
 
 ---
 
