@@ -1,0 +1,101 @@
+import numpy as np
+
+def compute_custom_aggregation_matrix_vectorized(old_tenors, new_tenors):
+    """
+    Computes an aggregation matrix 'c' that converts an original matrix 'a' (with rows 
+    corresponding to old tenor values) into an aggregated matrix 'b' (with rows corresponding 
+    to new tenor values).
+
+    This vectorized implementation does the following:
+      - For each old tenor value:
+          * If it is less than or equal to the smallest new tenor, full weight is assigned 
+            to the first new tenor.
+          * If it is greater than or equal to the largest new tenor, full weight is assigned 
+            to the last new tenor.
+          * If it exactly matches one of the new tenor values (and is not at an extreme), full weight 
+            is assigned to that new tenor.
+          * If it lies strictly between two new tenor values, its weight is linearly split between 
+            the two adjacent new tenors based on proximity.
+    
+    Arguments:
+      old_tenors : list or array-like
+          Sorted list of old tenor values (e.g. [5, 6, 7]).
+      new_tenors : list or array-like
+          Sorted list of new tenor values (e.g. [5, 7]).
+
+    Returns:
+      c : numpy.ndarray
+          Aggregation matrix of shape (len(new_tenors), len(old_tenors)) such that, when multiplied 
+          with a matrix 'a' (of shape (len(old_tenors), k)), yields the aggregated matrix 'b' = c @ a.
+    """
+    # Convert inputs to numpy arrays.
+    old_tenors = np.asarray(old_tenors)
+    new_tenors = np.asarray(new_tenors)
+    num_old = len(old_tenors)
+    num_new = len(new_tenors)
+    
+    # Initialize the aggregation matrix with zeros.
+    c = np.zeros((num_new, num_old))
+    
+    # Determine insertion indices: for each old tenor, where would it be inserted in new_tenors.
+    idx = np.searchsorted(new_tenors, old_tenors, side='left')
+    
+    # Case 1: Old tenor is less than or equal to the smallest new tenor.
+    mask_lower = (idx == 0)
+    c[0, mask_lower] = 1.0
+    
+    # Case 2: Old tenor is greater than or equal to the largest new tenor.
+    mask_upper = (idx == num_new)
+    c[-1, mask_upper] = 1.0
+    
+    # Case 3: Exact match for indices that are valid.
+    mask_valid = (idx < num_new)
+    mask_exact = np.zeros(num_old, dtype=bool)
+    mask_exact[mask_valid] = (old_tenors[mask_valid] == new_tenors[idx[mask_valid]])
+    
+    if np.any(mask_exact):
+        exact_indices = idx[mask_exact]
+        cols_exact = np.nonzero(mask_exact)[0]
+        c[exact_indices, cols_exact] = 1.0
+    
+    # Case 4: Old tenor lies strictly between two new tenor values.
+    mask_between = ~(mask_lower | mask_upper | mask_exact)
+    if np.any(mask_between):
+        cols_between = np.nonzero(mask_between)[0]
+        lower_idx = idx[mask_between] - 1
+        upper_idx = idx[mask_between]
+        old_vals = old_tenors[mask_between]
+        lower_new = new_tenors[lower_idx]
+        upper_new = new_tenors[upper_idx]
+        # Compute linear weights based on the relative distance between the two bracketing new tenor values.
+        weight_lower = (upper_new - old_vals) / (upper_new - lower_new)
+        weight_upper = (old_vals - lower_new) / (upper_new - lower_new)
+        c[lower_idx, cols_between] = weight_lower
+        c[upper_idx, cols_between] = weight_upper
+
+    return c
+
+if __name__ == "__main__":
+    # Example usage:
+    old_tenors = [5, 6, 8]
+    new_tenors = [5, 7]
+    k = 4  # number of columns (for example, representing countries)
+    
+    # Create a sample original matrix 'a' with random values.
+    # Each row of 'a' corresponds to an old tenor.
+    a = np.random.rand(len(old_tenors), k)
+    
+    # Compute the vectorized aggregation matrix 'c'.
+    c = compute_custom_aggregation_matrix_vectorized(old_tenors, new_tenors)
+    
+    # Aggregate the original matrix to get 'b' where each row corresponds to a new tenor.
+    b = c @ a
+    
+    print("Old Tenors:", old_tenors)
+    print("New Tenors:", new_tenors)
+    print("\nAggregation matrix c (shape {}):".format(c.shape))
+    print(c)
+    print("\nOriginal matrix a (shape {}):".format(a.shape))
+    print(a)
+    print("\nAggregated matrix b (shape {}):".format(b.shape))
+    print(b)
