@@ -1,0 +1,146 @@
+Here’s the revised and enhanced two-page Executive Summary in clear Markdown, incorporating your latest feedback clearly and intuitively:
+
+⸻
+
+📈 Executive Summary: Yield-Based Risk & PnL Attribution Framework
+
+⸻
+
+🟢 Overview
+
+This framework is designed for precise measurement, decomposition, and attribution of risk and PnL in portfolios sensitive to interest rate changes. It covers 79 instruments, representing:
+	•	9 countries × 8 tenors (72 instruments)
+	•	7 futures contracts
+
+We transparently identify sources of portfolio performance, enabling insightful management decisions and effective hedging.
+
+⸻
+
+🟢 Top-Level Portfolio Risk & PnL
+
+We first calculate total risk and daily PnL from observed historical changes:
+	•	Daily PnL:
+\text{PnL}_t = \Delta R_t \cdot w
+
+where:
+	•	\Delta R_t \in \mathbb{R}^{1\times79}: Daily yield changes
+	•	w \in \mathbb{R}^{79\times1}: Portfolio weights or sensitivities
+	•	Rolling Risk (variance-based):
+\Sigma_t = \text{Cov}(\Delta R_{t-h:t}) \quad ; \quad \text{Risk}_t = w^\top \Sigma_t w
+
+Historical validation ensures robust portfolio risk measures.
+
+⸻
+
+🟢 Aggregated Group-Level Analysis
+
+For simpler risk attribution, the 79 instruments are aggregated into broader risk groups via expert definitions or data-driven clustering (e.g., UMAP):
+	•	Grouping Matrix G maps instruments into K risk groups:
+G \in \mathbb{R}^{K\times79}
+	•	Ensuring comprehensive coverage:
+\sum_{k} G_{k,i} = 1,\quad\forall i\in[1,79]
+	•	Grouped PnL calculation:
+
+# Daily instrument-level PnL (time × portfolio × instrument)
+PnL_contributions = np.einsum('ti,pi->tpi', ΔR, W)
+
+# Aggregate into groups (time × portfolio × group)
+grouped_pnl = np.einsum('tpi,ki->tpk', PnL_contributions, G)
+
+This approach clearly highlights how broad market segments contribute to portfolio performance.
+
+⸻
+
+🟢 Flexible Portfolio and Hedge Management
+
+The framework naturally supports multiple portfolios and regression-based hedging:
+	•	Portfolio and hedge positions combined into a unified matrix:
+W{\prime} = \begin{bmatrix}W_{\text{portfolio}}\\ W_{\text{hedge}}\end{bmatrix}, \quad W{\prime} \in \mathbb{R}^{(P+H)\times79}
+	•	Hedging via Regression:
+	•	Optimal hedge weights are derived by regressing the portfolio returns onto selected hedging instruments:
+W_{\text{hedge}} = -(\beta), \quad\text{with}\quad \beta = (\Delta R_{\text{hedge}}^\top \Delta R_{\text{hedge}})^{-1}\Delta R_{\text{hedge}}^\top \Delta R_{\text{portfolio}}
+	•	Evaluate hedge effectiveness instantly by measuring variance before and after hedging:
+
+# Unhedged portfolio variance
+Risk_unhedged = W_portfolio @ Σ_t @ W_portfolio.T
+
+# Hedged portfolio variance
+W_combined = W_portfolio + W_hedge
+Risk_hedged = W_combined @ Σ_t @ W_combined.T
+
+# Hedge Efficiency
+Efficiency = (Risk_unhedged - Risk_hedged) / Risk_unhedged
+
+This clearly quantifies hedge effectiveness and helps fine-tune hedging strategies rapidly.
+
+⸻
+
+🟢 Scenario Analysis (Country & Tenor-specific)
+
+The framework includes powerful scenario analysis capabilities:
+	•	Scenarios can be applied flexibly to:
+	•	All groups
+	•	Selected subsets (specific tenors, countries, or products)
+
+Example: stress 2-year tenors in Germany by +50bps instantly, showing immediate portfolio impact.
+
+⸻
+
+🟢 Granular Decomposition
+
+Risk and PnL can be further decomposed into specific underlying dimensions (country, tenor, product):
+	•	Using dimension-specific masks:
+
+# Example: isolate tenor-specific contributions (2Y)
+tenor_mask = np.array([1 if m['tenor']=='2Y' else 0 for m in metadata])
+
+# Decompose Grouped PnL by tenor within a group
+tenor_contributions = np.einsum('tpi,i->tp', PnL_contributions, tenor_mask * G[group_idx])
+
+This granular visibility simplifies identifying exactly where risk and returns originate.
+
+⸻
+
+🟢 Historical Validation & Continuous Improvement
+	•	Historical Validation:
+	•	Backtesting ensures reliability:
+\text{HistoricalRisk}_t = w^\top \Sigma_t w
+	•	Real-time tracking enables forward-looking scenario analyses to quickly adapt to changing market conditions.
+
+⸻
+
+🟢 Implementation & Development Roadmap
+
+Current Features:
+	•	Historical covariance-based risk & PnL attribution
+	•	Regression-driven hedging integration
+	•	Fast, flexible scenario modeling (selected groups or tenors)
+	•	Full decomposition of risk and PnL by market dimensions
+
+Future Enhancements (TODOs):
+	•	Include futures and derivatives for broader product coverage
+	•	Realized portfolio-level PnL tracking
+	•	Incorporate carry components (coupon, financing)
+	•	Expand scenario builder (e.g., stress/mute countries, tenors)
+
+⸻
+
+📊 Summary Table
+
+Component	Shape	Description
+ΔR	(T, 79)	Daily yield changes
+W (Portfolio & Hedges)	(P+H, 79)	Portfolio and hedge sensitivities
+Σ_t	(79, 79)	Rolling covariance matrix (historical risk)
+G	(K, 79)	Grouping matrix
+GroupedRisk	(T, K, P+H)	Group-level risk attribution per portfolio/hedge
+GroupedPnL	(T, P+H, K)	Group-level PnL attribution per portfolio/hedge
+DecomposedPnL	(T, P+H, Dimension)	PnL decomposed by tenor, country, or product type
+Hedge Efficiency	(P+H,)	Variance reduction from hedging
+
+
+Todo
+
+1. extract futures risk
+2. historical pnl
+3. forward rolling tracking 
+4. carry
