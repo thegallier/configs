@@ -1,0 +1,359 @@
+import cvxpy as cp
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.special import comb
+from scipy.optimize import minimize
+
+# --------------------------
+# Part 1: Bernstein Polynomial Fitting (as before)
+# --------------------------
+
+def bernstein_basis(x, n, k):
+    """
+    Evaluate the k-th Bernstein basis polynomial of degree n at x:
+    B_{k,n}(x) = binom(n, k) * x^k * (1-x)^(n-k)
+    """
+    return comb(n, k) * (x**k) * ((1 - x)**(n - k))
+
+def bernstein_polynomial(x, coeffs):
+    """
+    Evaluate the Bernstein polynomial at x given coefficients.
+    """
+    n = len(coeffs) - 1
+    return sum(coeffs[k] * bernstein_basis(x, n, k) for k in range(n + 1))
+
+def fit_bernstein(x, y, degree):
+    """
+    Fit a Bernstein polynomial of a given degree to data (x, y)
+    under shape constraints:
+      - Monotonicity: coefficients nondecreasing
+      - Convexity: discrete second differences are nonnegative
+    """
+    n = degree
+    c = cp.Variable(n + 1)
+    B = np.array([[bernstein_basis(xi, n, k) for k in range(n + 1)] for xi in x])
+    y_est = B @ c
+    objective = cp.Minimize(cp.sum_squares(y_est - y))
+    constraints = []
+    # Monotonicity: c0 <= c1 <= ... <= cn
+    for k in range(n):
+        constraints.append(c[k] <= c[k + 1])
+    # Convexity: second differences nonnegative
+    for k in range(n - 1):
+        constraints.append(c[k + 2] - 2*c[k + 1] + c[k] >= 0)
+    prob = cp.Problem(objective, constraints)
+    prob.solve()
+    return c.value
+
+# Define domain and target piecewise linear function on [0,1]
+x_vals = np.linspace(0, 1, 100)
+target = np.piecewise(x_vals, [x_vals < 0.5, x_vals >= 0.5],
+                        [lambda x: 2*x, lambda x: x + 0.5])
+degree = 5
+coeffs_a = fit_bernstein(x_vals, target, degree)
+coeffs_b = fit_bernstein(x_vals, target, degree)
+
+def a_func(s):
+    """Evaluate a(s) using the fitted Bernstein coefficients."""
+    return bernstein_polynomial(s, coeffs_a)
+
+def b_func(t):
+    """Evaluate b(t) using the fitted Bernstein coefficients."""
+    return bernstein_polynomial(t, coeffs_b)
+
+# --------------------------
+# Part 2: Gradient-Based Optimization
+# --------------------------
+
+# We need the derivative of a Bernstein polynomial.
+def bernstein_derivative(x, coeffs):
+    """
+    Compute the derivative of a Bernstein polynomial at x.
+    The derivative is: a'(x) = n * sum_{k=0}^{n-1} (c[k+1]-c[k]) * B_{k,n-1}(x)
+    """
+    n = len(coeffs) - 1
+    deriv = 0
+    for k in range(n):
+        deriv += (coeffs[k+1] - coeffs[k]) * bernstein_basis(x, n - 1, k)
+    return n * deriv
+
+def a_func_deriv(s):
+    return bernstein_derivative(s, coeffs_a)
+
+def b_func_deriv(t):
+    return bernstein_derivative(t, coeffs_b)
+
+# Define p as the threshold for s; if s >= p, f(s,t)=0.
+p_val = 0.8
+
+def f_obj_to_minimize(x):
+    """
+    Objective function to minimize: negative of f(s,t)=a(s)*b(t) when s < p,
+    and 0 when s >= p.
+    Since we want to maximize f(s,t), we minimize its negative.
+    """
+    s, t = x
+    if s >= p_val:
+        return 0  # or a large penalty could be used if preferred
+    return -a_func(s) * b_func(t)
+
+def f_obj_grad(x):
+    """
+    Compute the gradient of f_obj_to_minimize at x = [s, t].
+    For s < p:
+      df/ds = a'(s)*b(t), and df/dt = a(s)*b'(t)
+    We return the gradient of the negative of f(s,t).
+    """
+    s, t = x
+    if s >= p_val:
+        return np.array([0, 0])
+    grad_s = a_func_deriv(s) * b_func(t)
+    grad_t = a_func(s) * b_func_deriv(t)
+    return -np.array([grad_s, grad_t])  # negative since we're minimizing
+
+# Set bounds for s and t in [0, 1]
+bounds = [(0, 1), (0, 1)]
+# Initial guess
+x0 = [0.5, 0.5]
+
+# Run gradient-based optimization using L-BFGS-B
+result = minimize(f_obj_to_minimize, x0, method='L-BFGS-B', jac=f_obj_grad, bounds=bounds)
+
+optimal_s, optimal_t = result.x
+max_obj = -result.fun  # since we minimized the negative
+
+print("Optimal s:", optimal_s)
+print("Optimal t:", optimal_t)
+print("Maximum objective value:", max_obj)
+
+# For visualization, we can compare with a contour plot from a grid search.
+s_grid = np.linspace(0, 1, 101)
+t_grid = np.linspace(0, 1, 101)
+S, T = np.meshgrid(s_grid, t_grid)
+F = np.zeros_like(S)
+for i in range(S.shape[0]):
+    for j in range(S.shape[1]):
+         s_val = S[i, j]
+         t_val = T[i, j]
+         F[i, j] = a_func(s_val)*b_func(t_val) if s_val < p_val else 0
+
+plt.figure(figsize=(8,6))
+cp_plot = plt.contourf(S, T, F, levels=50, cmap='viridis')
+plt.colorbar(cp_plot, label='Objective Value')
+plt.scatter(optimal_s, optimal_t, color='red', label='Optimum (Gradient-Based)')
+plt.xlabel('s')
+plt.ylabel('t')
+plt.title('Optimized Objective f(s,t)=a(s)*b(t) on [0,1]^2')
+plt.legend()
+plt.show()
+
+
+/=====
+
+import cvxpy as cp
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.special import comb
+
+# --- Part 1: Fitting the Bernstein Polynomials ---
+
+def bernstein_basis(x, n, k):
+    """
+    Evaluate the k-th Bernstein basis polynomial of degree n at x.
+    B_{k,n}(x) = binom(n, k)*x^k*(1-x)^(n-k)
+    """
+    return comb(n, k) * (x ** k) * ((1 - x) ** (n - k))
+
+def bernstein_polynomial(x, coeffs):
+    """
+    Evaluate the Bernstein polynomial at x given coefficients.
+    Here x can be a scalar or numpy array.
+    """
+    n = len(coeffs) - 1
+    # Sum over all Bernstein basis functions weighted by the coefficients
+    return sum(coeffs[k] * bernstein_basis(x, n, k) for k in range(n + 1))
+
+def fit_bernstein(x, y, degree):
+    """
+    Fit a Bernstein polynomial of a given degree to target data (x, y)
+    under the following shape constraints:
+      - Monotonicity: coefficients are nondecreasing (c0 <= c1 <= ... <= cn)
+      - Convexity: discrete second differences are nonnegative (c[k+2]-2c[k+1]+c[k] >= 0)
+    The fitting is done via a least-squares minimization using CVXPY.
+    """
+    n = degree
+    c = cp.Variable(n + 1)  # coefficients: c0, c1, ..., cn
+
+    # Build the Bernstein basis matrix B: B[i, k] = B_{k,n}(x[i])
+    B = np.array([[bernstein_basis(xi, n, k) for k in range(n + 1)] for xi in x])
+    y_est = B @ c  # estimated values
+
+    # Define the least-squares objective
+    objective = cp.Minimize(cp.sum_squares(y_est - y))
+    
+    # Build constraints for monotonicity and convexity
+    constraints = []
+    # Monotonicity: c0 <= c1 <= ... <= cn
+    for k in range(n):
+        constraints.append(c[k] <= c[k + 1])
+    # Convexity: second differences nonnegative
+    for k in range(n - 1):
+        constraints.append(c[k + 2] - 2*c[k + 1] + c[k] >= 0)
+    
+    # Solve the problem
+    prob = cp.Problem(objective, constraints)
+    prob.solve()
+    
+    return c.value
+
+# Define the domain [0, 1]
+x = np.linspace(0, 1, 100)
+
+# Define a target piecewise linear function.
+# For example, let the target be:
+#   f(x) = 2*x    for x in [0, 0.5]
+#   f(x) = x+0.5  for x in [0.5, 1]
+target = np.piecewise(x, [x < 0.5, x >= 0.5],
+                      [lambda x: 2*x, lambda x: x + 0.5])
+
+# Choose the degree of the Bernstein polynomial.
+degree = 5
+
+# Fit two functions: one for a(s) and one for b(t) (here we use the same target for simplicity).
+coeffs_a = fit_bernstein(x, target, degree)
+coeffs_b = fit_bernstein(x, target, degree)
+
+# Define the fitted functions.
+def a_func(s):
+    """Evaluate a(s) using the fitted Bernstein coefficients."""
+    return bernstein_polynomial(s, coeffs_a)
+
+def b_func(t):
+    """Evaluate b(t) using the fitted Bernstein coefficients."""
+    return bernstein_polynomial(t, coeffs_b)
+
+# --- Part 2: Optimizing the Product Function f(s,t) ---
+# Our objective function is defined as:
+#   f(s,t) = a(s)*b(t) if s < p, and 0 if s >= p.
+# We set p = 0.8 (this can be any value in [0,1])
+p_val = 0.8
+
+def f_obj(s, t):
+    """
+    Objective function f(s,t) = a(s)*b(t) if s < p_val, else 0.
+    """
+    return a_func(s) * b_func(t) if s < p_val else 0
+
+# Use a grid search to optimize f(s,t) over s and t in [0,1]
+s_grid = np.linspace(0, 1, 101)
+t_grid = np.linspace(0, 1, 101)
+S, T = np.meshgrid(s_grid, t_grid)
+F = np.zeros_like(S)
+
+# Evaluate f(s,t) at each grid point
+for i in range(S.shape[0]):
+    for j in range(S.shape[1]):
+         s_val = S[i, j]
+         t_val = T[i, j]
+         F[i, j] = f_obj(s_val, t_val)
+
+# Find the optimum over the grid
+max_value = np.max(F)
+max_index = np.argmax(F)
+optimal_s = S.flatten()[max_index]
+optimal_t = T.flatten()[max_index]
+
+print("Optimal s:", optimal_s)
+print("Optimal t:", optimal_t)
+print("Maximum objective value:", max_value)
+
+# Plot the objective function surface with the optimum marked
+plt.figure(figsize=(8, 6))
+cp = plt.contourf(S, T, F, levels=50, cmap='viridis')
+plt.colorbar(cp, label='Objective Value')
+plt.scatter(optimal_s, optimal_t, color='red', label='Optimum')
+plt.xlabel('s')
+plt.ylabel('t')
+plt.title('Objective Function f(s,t)=a(s)*b(t) on [0,1]^2')
+plt.legend()
+plt.show()
+
+/=====
+
+import cvxpy as cp
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.special import comb
+
+def bernstein_basis(x, n, k):
+    """Evaluate the k-th Bernstein basis polynomial of degree n at x."""
+    return comb(n, k) * (x**k) * ((1 - x)**(n - k))
+
+def bernstein_polynomial(x, coeffs):
+    """Evaluate the Bernstein polynomial at x given coefficients."""
+    n = len(coeffs) - 1
+    # Sum over all Bernstein basis functions weighted by the coefficients
+    return sum(coeffs[k] * bernstein_basis(x, n, k) for k in range(n + 1))
+
+def fit_bernstein(x, y, degree):
+    """
+    Fit a Bernstein polynomial of a given degree to target data (x,y)
+    under the constraints:
+      - Monotonicity: coefficients are nondecreasing
+      - Convexity: discrete second differences are nonnegative.
+    """
+    n = degree
+    # Define CVXPY variable for coefficients: c0, c1, ..., cn
+    c = cp.Variable(n + 1)
+
+    # Build the Bernstein basis matrix B where B[i, k] = B_{k,n}(x[i])
+    B = np.array([[bernstein_basis(xi, n, k) for k in range(n + 1)] for xi in x])
+    y_est = B @ c
+
+    # Define the objective: minimize squared error between the fitted polynomial and target y
+    objective = cp.Minimize(cp.sum_squares(y_est - y))
+    
+    # Set up constraints:
+    constraints = []
+    # Monotonicity: c0 <= c1 <= ... <= cn
+    for k in range(n):
+        constraints.append(c[k] <= c[k + 1])
+    # Convexity: second differences nonnegative: c[k+2] - 2*c[k+1] + c[k] >= 0
+    for k in range(n - 1):
+        constraints.append(c[k + 2] - 2*c[k + 1] + c[k] >= 0)
+    
+    # Solve the problem
+    prob = cp.Problem(objective, constraints)
+    prob.solve()
+    
+    return c.value
+
+# --- Example usage for fitting a piecewise linear function ---
+# Define the domain [0, 1]
+x = np.linspace(0, 1, 100)
+
+# Define a target piecewise linear increasing function.
+# For instance, let the target be:
+# f(x) = 2x for x in [0, 0.5] and f(x) = x + 0.5 for x in [0.5, 1]
+y_target = np.piecewise(x, [x < 0.5, x >= 0.5], [lambda x: 2*x, lambda x: x + 0.5])
+
+# Choose the degree of the Bernstein polynomial (higher degree gives more flexibility)
+degree = 5
+
+# Fit the Bernstein polynomial to the target function
+coeffs_fit = fit_bernstein(x, y_target, degree)
+y_fit = bernstein_polynomial(x, coeffs_fit)
+
+# Plot the results
+plt.figure(figsize=(8, 6))
+plt.plot(x, y_target, label='Target Piecewise Linear Function', linewidth=2)
+plt.plot(x, y_fit, '--', label='Fitted Bernstein Polynomial', linewidth=2)
+plt.xlabel('x')
+plt.ylabel('Function Value')
+plt.title("Bernstein Polynomial Fit with Monotonicity and Convexity Constraints")
+plt.legend()
+plt.show()
+
+# ---
+# The same approach can be used to fit both functions a(s) and b(t) on [0,1]
+# by defining their respective target piecewise linear functions and running fit_bernstein.
