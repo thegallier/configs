@@ -1,4 +1,4 @@
-# convex_dashboard_optimize_v8_user_target_fix.py
+# convex_dashboard_optimize_v9_scroll_heatmap.py
 
 import pandas as pd
 import numpy as np
@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import plotly
 from plotly.subplots import make_subplots
 import dash
+# Use modern imports + dash_table
 from dash import dcc, html, Input, Output, State, callback_context, no_update, dash_table
 from dash.exceptions import PreventUpdate
 from scipy.special import comb
@@ -32,12 +33,12 @@ try:
 except ImportError: print("SciPy not found, optimization will fail.")
 
 # --- Constants ---
-HEATMAP_GRID_SIZE = 11
+HEATMAP_GRID_SIZE = 11 # Keep lower for performance during testing, increase later if needed (e.g., 21)
 TIER_MIN, TIER_MAX = 1, 4
 DV01_MIN, DV01_MAX = 0, 2500000
 DEFAULT_DEGREE = 5
-DEFAULT_TARGET_LOSING_RATIO = 0.7 # Default value for the input field
-OPTIMIZATION_TOLERANCE = 0.01 # Keep tolerance fixed for now
+DEFAULT_TARGET_LOSING_RATIO = 0.7
+OPTIMIZATION_TOLERANCE = 0.01
 
 
 # =====================================================
@@ -86,6 +87,7 @@ def fit_1d_convex_bernstein(x_data_normalized, z_data, degree=5, monotonic_incre
         if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]: print(f"  Fit successful. Status: {problem.status}, Obj: {problem.value:.4f}"); return C.value
         else: print(f"  Fit FAILED. Status: {problem.status}"); return None
     except Exception as e: end_fit_time = time.time(); print(f"Fit Time (Exception): {end_fit_time - start_fit_time:.3f} seconds"); print(f"  Error during fit: {e}"); return None
+
 def calculate_metrics(df_input, C1_final, C2_final, degree1, degree2, epsilon_map):
     # Unchanged from v7
     start_calc_time = time.time(); df_calc = df_input.copy()
@@ -98,13 +100,16 @@ def calculate_metrics(df_input, C1_final, C2_final, degree1, degree2, epsilon_ma
     winning_mask = winning_mask_buy | winning_mask_sell; df_calc['is_winning'] = winning_mask; df_calc['is_losing'] = ~winning_mask
     total_dv01 = df_calc['dv01'].sum(); losing_dv01 = 0; losing_dv01_ratio = 0
     if total_dv01 > 1e-9: losing_dv01 = df_calc.loc[df_calc['is_losing'], 'dv01'].sum(); losing_dv01_ratio = losing_dv01 / total_dv01
-    df_calc['pnl_sign'] = np.where(df_calc['side'] == 'BUY', 1, -1); df_calc['potential_pnl'] = (df_calc['amount'] * (df_calc['mid'] - df_calc['value3_adjusted_price']) * df_calc['pnl_sign'])
+    df_calc['pnl_sign'] = np.where(df_calc['side'] == 'BUY', 1, -1); df_calc['potential_pnl'] = (df_calc['amount'] * (df_calc['mid'] - df_calc['value3_adjusted_price']) * df_calc['pnl_sign']) # PNL vs mid
     actual_winning_pnl = df_calc.loc[df_calc['is_winning'], 'potential_pnl'].sum(); potential_pnl_all_trades = df_calc['potential_pnl'].sum()
     favorable_adjustment_mask_buy = (df_calc['side'] == 'BUY') & (df_calc['value3_adjusted_price'] <= df_calc['mid']); favorable_adjustment_mask_sell = (df_calc['side'] == 'SELL') & (df_calc['value3_adjusted_price'] >= df_calc['mid'])
     favorable_adjustment_mask = favorable_adjustment_mask_buy | favorable_adjustment_mask_sell; df_calc['is_favorable_adjustment'] = favorable_adjustment_mask
     pnl_favorable_adjustment = df_calc.loc[favorable_adjustment_mask, 'potential_pnl'].sum()
+    # Efficiency based on *actual* wins vs potential PNL from *all* trades (adjusted vs mid)
     efficiency_ratio = actual_winning_pnl / potential_pnl_all_trades if abs(potential_pnl_all_trades) > 1e-9 else 0.0
+    # end_calc_time = time.time(); print(f"Metrics Calc Time: {end_calc_time - start_calc_time:.3f} seconds")
     return (losing_dv01_ratio, actual_winning_pnl, potential_pnl_all_trades, pnl_favorable_adjustment, efficiency_ratio, df_calc)
+
 def aggregate_metrics(df_results, group_key):
     # Unchanged from v6
     if df_results is None or group_key not in df_results.columns: return pd.DataFrame()
@@ -113,25 +118,47 @@ def aggregate_metrics(df_results, group_key):
     agg_df['losing_rate'] = np.where(agg_df['total_dv01'] > 1e-9, agg_df['losing_dv01'] / agg_df['total_dv01'], 0.0)
     agg_df = agg_df[['losing_rate', 'winning_pnl']].reset_index(); agg_df.rename(columns={group_key: 'GroupValue'}, inplace=True); agg_df['GroupKey'] = group_key
     return agg_df
+
+# --- MODIFIED Heatmap Calculation Function ---
 def generate_heatmap_data(C1_base, C2_base, degree, df_base, epsilon_map, r1_grid, r2_grid):
-    # Unchanged from v6
+    """Calculates losing ratio and efficiency ratio over a grid of rescalers."""
     print("Generating heatmap data...")
-    start_heatmap_time = time.time(); n_r1 = len(r1_grid); n_r2 = len(r2_grid); efficiency_matrix = np.full((n_r1, n_r2), np.nan); losing_ratio_matrix = np.full((n_r1, n_r2), np.nan)
-    if C1_base is None or C2_base is None: print("  Skipping heatmap: Base fits missing."); return efficiency_matrix, losing_ratio_matrix
+    start_heatmap_time = time.time(); n_r1 = len(r1_grid); n_r2 = len(r2_grid)
+    efficiency_matrix = np.full((n_r1, n_r2), np.nan)
+    losing_ratio_matrix = np.full((n_r1, n_r2), np.nan)
+
+    if C1_base is None or C2_base is None:
+        print("  Skipping heatmap generation: Base fits missing.")
+        return efficiency_matrix, losing_ratio_matrix
+
     for i, r1 in enumerate(r1_grid):
         for j, r2 in enumerate(r2_grid):
-            C1_r = C1_base * r1; C2_r = C2_base * r2
-            try: (losing_dv01_ratio, _, _, _, efficiency_ratio, _) = calculate_metrics(df_base, C1_r, C2_r, degree, degree, epsilon_map); efficiency_matrix[i, j] = efficiency_ratio; losing_ratio_matrix[i, j] = losing_dv01_ratio
-            except Exception as e: print(f"  Error heatmap metrics r1={r1}, r2={r2}: {e}")
-    end_heatmap_time = time.time(); print(f"Heatmap data finished in {end_heatmap_time - start_heatmap_time:.3f} seconds.")
+            C1_r = C1_base * r1
+            C2_r = C2_base * r2
+            try:
+                # We only need losing ratio and efficiency for the heatmaps
+                (losing_dv01_ratio, _, _, _, efficiency_ratio, _) = calculate_metrics(
+                    df_base, C1_r, C2_r, degree, degree, epsilon_map
+                )
+                efficiency_matrix[i, j] = efficiency_ratio
+                losing_ratio_matrix[i, j] = losing_dv01_ratio
+            except Exception as e:
+                print(f"  Error calculating metrics for heatmap at r1={r1}, r2={r2}: {e}")
+                # Keep NaN in matrix
+
+    end_heatmap_time = time.time()
+    print(f"Heatmap data generation finished in {end_heatmap_time - start_heatmap_time:.3f} seconds.")
     return efficiency_matrix, losing_ratio_matrix
+# --- END MODIFICATION ---
+
 def create_heatmap_figure(matrix, r1_grid, r2_grid, title, z_label, colorscale='Viridis'):
     # Unchanged from v6
     fig = go.Figure(data=go.Heatmap(z=matrix, x=r2_grid, y=r1_grid, colorscale=colorscale, colorbar=dict(title=z_label), hoverongaps=False))
     fig.update_layout(title=title, xaxis_title="Rescaler 2 (DV01)", yaxis_title="Rescaler 1 (Tier)", yaxis_autorange='reversed', margin=dict(l=50, r=20, t=50, b=50))
     return fig
+
+# --- Optimization Helper (Unchanged from v8) ---
 def optimization_objective_and_constraints(rescalers, C1_base, C2_base, degree, df_base, epsilon_map, target_ratio, tolerance):
-    # Unchanged from v8
     r1, r2 = rescalers; C1_r = (C1_base * r1) if C1_base is not None else None; C2_r = (C2_base * r2) if C2_base is not None else None
     if C1_r is None or C2_r is None: print("Opt Func: Base fit missing."); return 1e12, 1.0
     try: (losing_ratio, actual_winning_pnl, _, _, _, _) = calculate_metrics(df_base, C1_r, C2_r, degree, degree, epsilon_map); objective_value = -actual_winning_pnl; constraint_value = tolerance - abs(losing_ratio - target_ratio); return objective_value, constraint_value
@@ -163,11 +190,12 @@ print(f"Generated DataFrame with {len(df)} rows, sorted DV01, modified trade pri
 # --- Dash App Initialization ---
 print("Initializing Dash app..."); app = dash.Dash(__name__)
 
-# --- App Layout (Unchanged from v8) ---
+# --- App Layout (ADDED Heatmap, MODIFIED Tables) ---
 app.layout = html.Div([
     html.H1("Convex Polynomial Adjustment Dashboard & Optimizer"),
     html.Div([ # Top row
         html.Div([ # Control Panel
+            # ... (Controls and metrics display remain the same) ...
             html.H3("Controls, Metrics & Optimization"), html.Label("Polynomial Degree:"), dcc.Input(id='input-degree', type='number', value=DEFAULT_DEGREE, min=1, max=10, step=1, style={'marginLeft': '10px', 'marginRight': '20px'}),
             html.Div([ html.Label("Rescale Factor - Poly 1 (Tier):"), dcc.Slider(id='slider-rescale1', min=0.5, max=2.0, step=0.05, value=1.0, marks=None, tooltip={"placement": "bottom", "always_visible": True}) ], style={'marginTop': '15px', 'marginBottom': '10px'}),
             html.Div([ html.Label("Rescale Factor - Poly 2 (DV01):"), dcc.Slider(id='slider-rescale2', min=0.5, max=2.0, step=0.05, value=1.0, marks=None, tooltip={"placement": "bottom", "always_visible": True}) ], style={'marginBottom': '15px'}),
@@ -184,19 +212,43 @@ app.layout = html.Div([
              html.Div([ html.H4("PWL 2 (DV01 basis)"), *[html.Div([ html.Label(f"Pt {i+1} Z:"), dcc.Slider(id={'type': 'slider-pwl2', 'index': i}, min=-1, max=2, step=0.05, value=pwl2_z_initial[i], marks=None, tooltip={"placement": "bottom", "always_visible": True}) ], style={'marginBottom': 15}) for i in range(len(pwl2_x_norm))], dcc.Graph(id='graph-pwl2') ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'padding': '10px'})
         ], style={'width': '69%', 'display': 'inline-block', 'verticalAlign': 'top'})
     ]), # End top row
-    html.Hr(), html.Div([ html.H3("Rescaler Analysis Heatmaps"), html.Div([ dcc.Graph(id='graph-heatmap-efficiency') ], style={'width': '49%', 'display': 'inline-block', 'padding': '5px'}), html.Div([ dcc.Graph(id='graph-heatmap-losing') ], style={'width': '49%', 'display': 'inline-block', 'padding': '5px'}) ]), html.Hr(),
-    html.Div([ html.H3("Comparison by Group (Initial vs Current)"), html.Div([ html.H4("By CUSIP"), dash_table.DataTable( id='table-cusip-comparison', columns=[ {'name': 'CUSIP', 'id': 'GroupValue'}, {'name': 'Init. Losing Rate', 'id': 'losing_rate_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Curr. Losing Rate', 'id': 'losing_rate_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Δ Losing Rate', 'id': 'losing_rate_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Init. Winning PNL', 'id': 'winning_pnl_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Curr. Winning PNL', 'id': 'winning_pnl_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Δ Winning PNL', 'id': 'winning_pnl_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, ], data=[], page_size=10, sort_action='native', filter_action='native', style_table={'overflowX': 'auto', 'height': '300px', 'overflowY': 'auto'}, style_cell={'textAlign': 'left', 'minWidth': '80px', 'width': '120px', 'maxWidth': '180px'}, style_header={'fontWeight': 'bold'} ) ], style={'width': '33%', 'display': 'inline-block', 'padding': '5px', 'verticalAlign':'top'}), html.Div([ html.H4("By Tier"), dash_table.DataTable( id='table-tier-comparison', columns=[ {'name': 'Tier', 'id': 'GroupValue'}, {'name': 'Init. Losing Rate', 'id': 'losing_rate_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Curr. Losing Rate', 'id': 'losing_rate_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Δ Losing Rate', 'id': 'losing_rate_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Init. Winning PNL', 'id': 'winning_pnl_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Curr. Winning PNL', 'id': 'winning_pnl_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Δ Winning PNL', 'id': 'winning_pnl_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, ], data=[], page_size=10, sort_action='native', filter_action='native', style_table={'height': '300px', 'overflowY': 'auto'}, style_cell={'textAlign': 'left'}, style_header={'fontWeight': 'bold'} ) ], style={'width': '33%', 'display': 'inline-block', 'padding': '5px', 'verticalAlign':'top'}), html.Div([ html.H4("By Customer"), dash_table.DataTable( id='table-customer-comparison', columns=[ {'name': 'Customer', 'id': 'GroupValue'}, {'name': 'Init. Losing Rate', 'id': 'losing_rate_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Curr. Losing Rate', 'id': 'losing_rate_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Δ Losing Rate', 'id': 'losing_rate_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Init. Winning PNL', 'id': 'winning_pnl_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Curr. Winning PNL', 'id': 'winning_pnl_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Δ Winning PNL', 'id': 'winning_pnl_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, ], data=[], page_size=10, sort_action='native', filter_action='native', style_table={'height': '300px', 'overflowY': 'auto'}, style_cell={'textAlign': 'left'}, style_header={'fontWeight': 'bold'} ) ], style={'width': '33%', 'display': 'inline-block', 'padding': '5px', 'verticalAlign':'top'}), ]),
+    html.Hr(), # Separator
+
+    # --- MODIFIED Heatmap Row (3 heatmaps) ---
+    html.Div([
+        html.H3("Rescaler Analysis Heatmaps"),
+        html.Div([ dcc.Graph(id='graph-heatmap-losing') ], style={'width': '33%', 'display': 'inline-block', 'padding': '3px'}),
+        html.Div([ dcc.Graph(id='graph-heatmap-efficiency') ], style={'width': '33%', 'display': 'inline-block', 'padding': '3px'}),
+        html.Div([ dcc.Graph(id='graph-heatmap-ideal-efficiency') ], style={'width': '33%', 'display': 'inline-block', 'padding': '3px'}) # Added 3rd heatmap graph
+    ]),
+    # --- END MODIFICATION ---
+
+    html.Hr(), # Separator
+    # --- MODIFIED Comparison Tables Row (Removed page_size) ---
+    html.Div([
+        html.H3("Comparison by Group (Initial vs Current)"),
+        html.Div([ html.H4("By CUSIP"), dash_table.DataTable( id='table-cusip-comparison', columns=[ {'name': 'CUSIP', 'id': 'GroupValue'}, {'name': 'Init. Losing Rate', 'id': 'losing_rate_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Curr. Losing Rate', 'id': 'losing_rate_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Δ Losing Rate', 'id': 'losing_rate_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Init. Winning PNL', 'id': 'winning_pnl_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Curr. Winning PNL', 'id': 'winning_pnl_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Δ Winning PNL', 'id': 'winning_pnl_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, ], data=[], sort_action='native', filter_action='native', style_table={'overflowX': 'auto', 'height': '300px', 'overflowY': 'auto'}, style_cell={'textAlign': 'left', 'minWidth': '80px', 'width': '120px', 'maxWidth': '180px'}, style_header={'fontWeight': 'bold'} ) ], style={'width': '33%', 'display': 'inline-block', 'padding': '5px', 'verticalAlign':'top'}),
+        html.Div([ html.H4("By Tier"), dash_table.DataTable( id='table-tier-comparison', columns=[ {'name': 'Tier', 'id': 'GroupValue'}, {'name': 'Init. Losing Rate', 'id': 'losing_rate_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Curr. Losing Rate', 'id': 'losing_rate_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Δ Losing Rate', 'id': 'losing_rate_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Init. Winning PNL', 'id': 'winning_pnl_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Curr. Winning PNL', 'id': 'winning_pnl_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Δ Winning PNL', 'id': 'winning_pnl_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, ], data=[], sort_action='native', filter_action='native', style_table={'height': '300px', 'overflowY': 'auto'}, style_cell={'textAlign': 'left'}, style_header={'fontWeight': 'bold'} ) ], style={'width': '33%', 'display': 'inline-block', 'padding': '5px', 'verticalAlign':'top'}),
+        html.Div([ html.H4("By Customer"), dash_table.DataTable( id='table-customer-comparison', columns=[ {'name': 'Customer', 'id': 'GroupValue'}, {'name': 'Init. Losing Rate', 'id': 'losing_rate_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Curr. Losing Rate', 'id': 'losing_rate_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Δ Losing Rate', 'id': 'losing_rate_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.percentage)}, {'name': 'Init. Winning PNL', 'id': 'winning_pnl_initial', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Curr. Winning PNL', 'id': 'winning_pnl_current', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, {'name': 'Δ Winning PNL', 'id': 'winning_pnl_delta', 'type': 'numeric', 'format': dash_table.Format.Format(precision=2, scheme=dash_table.Format.Scheme.fixed).group(True)}, ], data=[], sort_action='native', filter_action='native', style_table={'height': '300px', 'overflowY': 'auto'}, style_cell={'textAlign': 'left'}, style_header={'fontWeight': 'bold'} ) ], style={'width': '33%', 'display': 'inline-block', 'padding': '5px', 'verticalAlign':'top'}),
+    ]), # End comparison tables row
+    # --- END MODIFICATION ---
+
+    # Stores (Unchanged)
     dcc.Store(id='store-dataframe', data=df.to_json(date_format='iso', orient='split')), dcc.Store(id='store-epsilon', data=epsilon_map), dcc.Store(id='store-calculated-df'), dcc.Store(id='store-base-c1'), dcc.Store(id='store-base-c2'),
 ])
 
 
-# --- Main Callback (CORRECTED Indentation in metric calculation try block) ---
+# --- Main Callback (UPDATED Outputs, PNL Check, Heatmap logic) ---
 @app.callback(
     [Output('graph-pwl1', 'figure'), Output('graph-pwl2', 'figure'),
-     Output('metric-dv01-ratio', 'children'), Output('metric-actual-winning-pnl', 'children'), Output('metric-potential-pnl-all', 'children'), Output('metric-pnl-favorable', 'children'), Output('metric-efficiency', 'children'),
+     Output('metric-dv01-ratio', 'children'), Output('metric-actual-winning-pnl', 'children'),
+     Output('metric-potential-pnl-all', 'children'), Output('metric-pnl-favorable', 'children'),
+     Output('metric-efficiency', 'children'),
      Output('status-message', 'children'), Output('status-message', 'style'),
      Output('store-calculated-df', 'data'), Output('store-base-c1', 'data'), Output('store-base-c2', 'data'),
-     Output('graph-heatmap-efficiency', 'figure'), Output('graph-heatmap-losing', 'figure'),
+     Output('graph-heatmap-losing', 'figure'), # Existing heatmap 1
+     Output('graph-heatmap-efficiency', 'figure'), # Existing heatmap 2 (now "ideal")
+     Output('graph-heatmap-ideal-efficiency', 'figure'), # New heatmap 3
      Output('table-cusip-comparison', 'data'), Output('table-tier-comparison', 'data'), Output('table-customer-comparison', 'data')],
     [Input('button-recalculate', 'n_clicks')],
     [State({'type': 'slider-pwl1', 'index': dash.ALL}, 'value'), State({'type': 'slider-pwl2', 'index': dash.ALL}, 'value'), State('input-degree', 'value'), State('slider-rescale1', 'value'), State('slider-rescale2', 'value'), State('store-dataframe', 'data'), State('store-epsilon', 'data')]
@@ -213,66 +265,51 @@ def update_dashboard(n_clicks, slider_vals_pwl1, slider_vals_pwl2, degree, resca
 
     if not ctx.triggered or ctx.triggered[0]['prop_id'] == '.' or n_clicks == 0:
          print("Initial load or no clicks yet.")
-         return ([fig_empty, fig_empty] + [dv01_ratio_str, actual_winning_pnl_str, potential_pnl_all_str, pnl_favorable_adj_str, efficiency_str] + ["Adjust sliders/degree and click Recalculate.", initial_status_style, calculated_df_json, base_c1_data, base_c2_data] + [heatmap_fig_empty, heatmap_fig_empty] + [table_cusip_data, table_tier_data, table_customer_data])
+         return ([fig_empty, fig_empty] +
+                 [dv01_ratio_str, actual_winning_pnl_str, potential_pnl_all_str, pnl_favorable_adj_str, efficiency_str] +
+                 ["Adjust sliders/degree and click Recalculate.", initial_status_style, calculated_df_json, base_c1_data, base_c2_data] +
+                 [heatmap_fig_empty, heatmap_fig_empty, heatmap_fig_empty] + # 3 empty heatmaps
+                 [table_cusip_data, table_tier_data, table_customer_data])
 
     print(f"\n--- Recalculating (Button Click {n_clicks}) ---")
     status_message = ""; status_style = initial_status_style.copy(); calc_success = False
     current_pwl1_z = np.array(slider_vals_pwl1); current_pwl2_z = np.array(slider_vals_pwl2); df_state = pd.read_json(df_json, orient='split')
     print(f"Using Degree: {degree}, Rescale1: {rescale1}, Rescale2: {rescale2}")
-    if degree is None or degree < 1: # Corrected If -> if
-        degree = DEFAULT_DEGREE
-        status_message += f"Invalid degree, using default {DEFAULT_DEGREE}. "
-        print("Warning: Invalid degree.")
+    if degree is None or degree < 1: degree = DEFAULT_DEGREE; status_message += f"Invalid degree, using default {DEFAULT_DEGREE}. "; print("Warning: Invalid degree.")
 
     # Step 1: Base Fits
     C1_base = fit_1d_convex_bernstein(pwl1_x_norm, current_pwl1_z, degree=degree, monotonic_increasing=False)
     C2_base = fit_1d_convex_bernstein(pwl2_x_norm, current_pwl2_z, degree=degree, monotonic_increasing=True)
     base_fits_ok = C1_base is not None and C2_base is not None
-    if base_fits_ok:
-        base_c1_data = C1_base.tolist(); base_c2_data = C2_base.tolist()
-    else:
-        status_message += "ERROR: Base fit failed. Calcs aborted. "
-        status_style['color'] = 'red'; status_style['borderColor'] = 'salmon'
+    if base_fits_ok: base_c1_data = C1_base.tolist(); base_c2_data = C2_base.tolist()
+    else: status_message += "ERROR: Base fit failed. Calcs aborted. "; status_style['color'] = 'red'; status_style['borderColor'] = 'salmon'
 
     # Step 2: Initial Metrics
     df_initial_results = None
     if base_fits_ok:
         print("Calculating initial metrics (r=1.0)...")
-        try:
-            (_, _, _, _, _, df_initial_results) = calculate_metrics(df_state, C1_base, C2_base, degree, degree, epsilon_map_state)
-        except Exception as e:
-            print(f"ERROR initial metrics: {e}")
-            status_message += f"ERROR initial metrics: {e}. "
-            status_style['color'] = 'red'; status_style['borderColor'] = 'salmon'
+        try: (_, _, _, _, _, df_initial_results) = calculate_metrics(df_state, C1_base, C2_base, degree, degree, epsilon_map_state)
+        except Exception as e: print(f"ERROR initial metrics: {e}"); status_message += f"ERROR initial metrics: {e}. "; status_style['color'] = 'red'; status_style['borderColor'] = 'salmon'
 
     # Step 3: Current Metrics
-    C1_rescaled = (C1_base * rescale1) if base_fits_ok else None
-    C2_rescaled = (C2_base * rescale2) if base_fits_ok else None
+    C1_rescaled = (C1_base * rescale1) if base_fits_ok else None; C2_rescaled = (C2_base * rescale2) if base_fits_ok else None
     df_current_results = None
     dv01_ratio_str, actual_winning_pnl_str, potential_pnl_all_str, pnl_favorable_adj_str, efficiency_str = "Error", "Error", "Error", "Error", "Error"
     if base_fits_ok:
         print("Calculating current metrics...")
-        # --- CORRECTED INDENTATION FOR TRY/EXCEPT BLOCK ---
-        try: # Level 1 indentation relative to 'if base_fits_ok:'
-            # Level 2 indentation for code inside 'try'
+        try:
             (losing_dv01_ratio, actual_winning_pnl, potential_pnl_all_trades, pnl_favorable_adjustment, efficiency_ratio, df_current_results) = calculate_metrics(df_state, C1_rescaled, C2_rescaled, degree, degree, epsilon_map_state)
             print(f"  Raw Current Metrics: DV01 Ratio={losing_dv01_ratio}, Winning PNL={actual_winning_pnl}, Potential PNL={potential_pnl_all_trades}, Favorable Adj PNL={pnl_favorable_adjustment}, Efficiency={efficiency_ratio}")
             dv01_ratio_str = f"{losing_dv01_ratio:.2%}"; actual_winning_pnl_str = f"{actual_winning_pnl:,.2f}"; potential_pnl_all_str = f"{potential_pnl_all_trades:,.2f}"; pnl_favorable_adj_str = f"{pnl_favorable_adjustment:,.2f}"; efficiency_str = f"{efficiency_ratio:.2%}"
+            # --- Corrected PNL Check ---
             pnl_check_ok = potential_pnl_all_trades <= pnl_favorable_adjustment
             status_message += f"Calculation complete. P&L Check (Total <= Favorable Adj): {'OK' if pnl_check_ok else 'Failed!'}. "
-            status_style['color'] = 'green'; status_style['borderColor'] = 'darkseagreen'
-            if not pnl_check_ok: # Level 3 indentation for code inside 'if'
-                status_style['color'] = 'orange'; status_style['borderColor'] = 'darkorange'
+            # --- End Correction ---
+            status_style['color'] = 'green'; status_style['borderColor'] = 'darkseagreen';
+            if not pnl_check_ok: status_style['color'] = 'orange'; status_style['borderColor'] = 'darkorange'
             calc_success = True; calculated_df_json = df_current_results.to_json(date_format='iso', orient='split')
-        except Exception as e: # Level 1 indentation relative to 'if base_fits_ok:', matching 'try'
-            # Level 2 indentation for code inside 'except'
-            print(f"ERROR calculating current metrics: {e}")
-            status_message += f"ERROR current metrics: {e}. "
-            dv01_ratio_str = "Calc Err"; actual_winning_pnl_str = "Calc Err"; potential_pnl_all_str = "Calc Err"; pnl_favorable_adj_str = "Calc Err"; efficiency_str = "Calc Err"
-            status_style['color'] = 'red'; status_style['borderColor'] = 'salmon'
-        # --- END CORRECTION ---
-    elif not base_fits_ok: # Level 0 indentation relative to 'if base_fits_ok:', matching 'if'
-        dv01_ratio_str = "Fit Fail"; actual_winning_pnl_str = "Fit Fail"; potential_pnl_all_str = "Fit Fail"; pnl_favorable_adj_str = "Fit Fail"; efficiency_str = "Fit Fail"
+        except Exception as e: print(f"ERROR calculating current metrics: {e}"); status_message += f"ERROR current metrics: {e}. "; dv01_ratio_str = "Calc Err"; actual_winning_pnl_str = "Calc Err"; potential_pnl_all_str = "Calc Err"; pnl_favorable_adj_str = "Calc Err"; efficiency_str = "Calc Err"; status_style['color'] = 'red'; status_style['borderColor'] = 'salmon'
+    elif not base_fits_ok: dv01_ratio_str = "Fit Fail"; actual_winning_pnl_str = "Fit Fail"; potential_pnl_all_str = "Fit Fail"; pnl_favorable_adj_str = "Fit Fail"; efficiency_str = "Fit Fail"
 
     # Step 4: Aggregate/Compare for Tables
     if calc_success and df_initial_results is not None:
@@ -290,34 +327,48 @@ def update_dashboard(n_clicks, slider_vals_pwl1, slider_vals_pwl2, degree, resca
             except Exception as e: print(f"ERROR aggregating/merging for key '{group_key}': {e}"); status_message += f"ERROR table {group_key}. "; status_style['color'] = 'red'; status_style['borderColor'] = 'salmon'
     else: status_message += " Comparison tables not generated. "
 
-    # Step 5: Generate Plots
+    # Step 5: Generate Plots (logic remains same)
     fig1 = go.Figure(); fig2 = go.Figure(); x_plot_normalized = np.linspace(0, 1, 100); x_plot_tier = np.linspace(TIER_MIN, TIER_MAX, 100); x_plot_dv01 = np.linspace(DV01_MIN, DV01_MAX, 100); plot1_error = False; plot2_error = False
-    if C1_base is not None:
-        try: y_fit1_orig = evaluate_1d_bernstein(x_plot_normalized, C1_base, degree); fig1.add_trace(go.Scatter(x=x_plot_tier, y=y_fit1_orig, mode='lines', name=f'Base Fit', line=dict(color='rgba(255,0,0,0.5)', dash='dash'))); y_fit1_rescaled = evaluate_1d_bernstein(x_plot_normalized, C1_rescaled, degree); fig1.add_trace(go.Scatter(x=x_plot_tier, y=y_fit1_rescaled, mode='lines', name=f'Rescaled (x{rescale1:.2f})', line=dict(color='red')))
-        except Exception as e: print(f"Error eval/plot B1: {e}"); plot1_error = True
+    if C1_base is not None: try: y_fit1_orig = evaluate_1d_bernstein(x_plot_normalized, C1_base, degree); fig1.add_trace(go.Scatter(x=x_plot_tier, y=y_fit1_orig, mode='lines', name=f'Base Fit', line=dict(color='rgba(255,0,0,0.5)', dash='dash'))); y_fit1_rescaled = evaluate_1d_bernstein(x_plot_normalized, C1_rescaled, degree); fig1.add_trace(go.Scatter(x=x_plot_tier, y=y_fit1_rescaled, mode='lines', name=f'Rescaled (x{rescale1:.2f})', line=dict(color='red'))); except Exception as e: print(f"Error eval/plot B1: {e}"); plot1_error = True
     fig1.add_trace(go.Scatter(x=pwl1_x_orig, y=pwl1_z_initial, mode='markers', name='Initial PWL Pts', marker=dict(color='grey', symbol='cross'))); fig1.add_trace(go.Scatter(x=pwl1_x_orig, y=current_pwl1_z, mode='markers', name='Current PWL Pts', marker=dict(color='blue', symbol='circle-open'))); fig1.update_layout(title=f'Tier Poly (Deg {degree}){" - Err" if plot1_error else ""}', xaxis_title='Tier (Original Scale)', yaxis_title='Value 1 Basis', margin=dict(l=20, r=20, t=40, b=20), legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
-    if C2_base is not None:
-        try: y_fit2_orig = evaluate_1d_bernstein(x_plot_normalized, C2_base, degree); fig2.add_trace(go.Scatter(x=x_plot_dv01, y=y_fit2_orig, mode='lines', name=f'Base Fit (Mono)', line=dict(color='rgba(0,128,0,0.5)', dash='dash'))); y_fit2_rescaled = evaluate_1d_bernstein(x_plot_normalized, C2_rescaled, degree); fig2.add_trace(go.Scatter(x=x_plot_dv01, y=y_fit2_rescaled, mode='lines', name=f'Rescaled (x{rescale2:.2f})', line=dict(color='green')))
-        except Exception as e: print(f"Error eval/plot B2: {e}"); plot2_error = True
+    if C2_base is not None: try: y_fit2_orig = evaluate_1d_bernstein(x_plot_normalized, C2_base, degree); fig2.add_trace(go.Scatter(x=x_plot_dv01, y=y_fit2_orig, mode='lines', name=f'Base Fit (Mono)', line=dict(color='rgba(0,128,0,0.5)', dash='dash'))); y_fit2_rescaled = evaluate_1d_bernstein(x_plot_normalized, C2_rescaled, degree); fig2.add_trace(go.Scatter(x=x_plot_dv01, y=y_fit2_rescaled, mode='lines', name=f'Rescaled (x{rescale2:.2f})', line=dict(color='green'))); except Exception as e: print(f"Error eval/plot B2: {e}"); plot2_error = True
     fig2.add_trace(go.Scatter(x=pwl2_x_orig, y=pwl2_z_initial, mode='markers', name='Initial PWL Pts', marker=dict(color='grey', symbol='cross'))); fig2.add_trace(go.Scatter(x=pwl2_x_orig, y=current_pwl2_z, mode='markers', name='Current PWL Pts', marker=dict(color='orange', symbol='circle-open'))); fig2.update_layout(title=f'DV01 Poly (Deg {degree}, Mono){" - Err" if plot2_error else ""}', xaxis_title='DV01 (Original Scale)', yaxis_title='Value 2 Basis', margin=dict(l=20, r=20, t=40, b=20), legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01))
     if plot1_error and not calc_success: status_message += " Err plot Fit 1."; if plot2_error and not calc_success: status_message += " Err plot Fit 2."
 
-    # Step 6: Generate Heatmaps
+    # --- Step 6: Generate Heatmaps ---
     r1_grid = np.linspace(0.5, 2.0, HEATMAP_GRID_SIZE); r2_grid = np.linspace(0.5, 2.0, HEATMAP_GRID_SIZE)
     if base_fits_ok:
-        efficiency_matrix, losing_ratio_matrix = generate_heatmap_data(C1_base, C2_base, degree, df_state, epsilon_map_state, r1_grid, r2_grid)
-        heatmap_fig_eff = create_heatmap_figure(efficiency_matrix, r1_grid, r2_grid, "Efficiency Ratio", "Ratio", colorscale='RdYlGn')
+        efficiency_matrix, losing_ratio_matrix = generate_heatmap_data(
+            C1_base, C2_base, degree, df_state, epsilon_map_state, r1_grid, r2_grid
+        )
+        # Existing heatmaps
         heatmap_fig_losing = create_heatmap_figure(losing_ratio_matrix, r1_grid, r2_grid, "Losing DV01 Ratio", "Ratio", colorscale='Plasma')
-    else: heatmap_fig_eff = heatmap_fig_empty; heatmap_fig_losing = heatmap_fig_empty; status_message += " Heatmaps not generated."
+        heatmap_fig_eff = create_heatmap_figure(efficiency_matrix, r1_grid, r2_grid, "Efficiency Ratio", "Ratio", colorscale='RdYlGn')
+
+        # Generate data for the "Ideal Efficiency" heatmap (assuming no 'favorable adjustment' filter applied to PNL calculation)
+        # We can reuse generate_heatmap_data as it calculates the necessary base efficiency
+        # This efficiency IS `actual_winning_pnl / potential_pnl_all_trades`
+        heatmap_fig_ideal_eff = create_heatmap_figure(
+            efficiency_matrix, # Use the SAME efficiency matrix
+            r1_grid,
+            r2_grid,
+            "Ideal Efficiency Ratio (Win PNL / Potential PNL)", # Updated title
+            "Ratio",
+            colorscale='Viridis' # Different colorscale perhaps
+        )
+    else:
+        heatmap_fig_losing = heatmap_fig_empty
+        heatmap_fig_eff = heatmap_fig_empty
+        heatmap_fig_ideal_eff = heatmap_fig_empty # Assign empty figure
+        status_message += " Heatmaps not generated."
 
     print(f"Callback finished. Status: {status_message}")
     # Return all outputs
     return ([fig1, fig2] +
             [dv01_ratio_str, actual_winning_pnl_str, potential_pnl_all_str, pnl_favorable_adj_str, efficiency_str] +
             [status_message, status_style, calculated_df_json, base_c1_data, base_c2_data] +
-            [heatmap_fig_eff, heatmap_fig_losing] +
+            [heatmap_fig_losing, heatmap_fig_eff, heatmap_fig_ideal_eff] + # Pass back 3 heatmaps
             [table_cusip_data, table_tier_data, table_customer_data])
-
 
 # --- Optimization Callback (Unchanged) ---
 @app.callback(
@@ -329,7 +380,7 @@ def optimize_rescalers(n_clicks, base_c1_data, base_c2_data, degree, target_losi
     if not base_c1_data or not base_c2_data: return no_update, no_update, "Opt failed: Base fits needed first."
     try: target_losing_ratio = float(target_losing_ratio_input) / 100.0; assert 0.0 <= target_losing_ratio <= 1.0; opt_status_msg = f"Optimizing for Target Losing DV01 Ratio: {target_losing_ratio:.1%}..."
     except (TypeError, ValueError, AssertionError): print(f"Invalid target ratio input: {target_losing_ratio_input}. Using default."); target_losing_ratio = DEFAULT_TARGET_LOSING_RATIO; opt_status_msg = f"Invalid Target. Using default {DEFAULT_TARGET_LOSING_RATIO*100}%. "
-    print(f"\n--- Starting Optimization (Target Ratio: {target_losing_ratio:.3f}) ---"); opt_start_time = time.time(); C1_base = np.array(base_c1_data); C2_base = np.array(base_c2_data); df_base = pd.read_json(df_json, orient='split'); If degree is None or degree < 1: degree = DEFAULT_DEGREE
+    print(f"\n--- Starting Optimization (Target Ratio: {target_losing_ratio:.3f}) ---"); opt_start_time = time.time(); C1_base = np.array(base_c1_data); C2_base = np.array(base_c2_data); df_base = pd.read_json(df_json, orient='split'); if degree is None or degree < 1: degree = DEFAULT_DEGREE
     def objective_func(rescalers): obj_val, _ = optimization_objective_and_constraints(rescalers, C1_base, C2_base, degree, df_base, epsilon_map_state, target_losing_ratio, OPTIMIZATION_TOLERANCE); return obj_val
     constraints = ({'type': 'ineq', 'fun': lambda r: optimization_objective_and_constraints(r, C1_base, C2_base, degree, df_base, epsilon_map_state, target_losing_ratio, OPTIMIZATION_TOLERANCE)[1]})
     bounds = [(0.5, 2.0), (0.5, 2.0)]; initial_guess = [1.0, 1.0]
