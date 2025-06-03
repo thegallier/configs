@@ -1,0 +1,47 @@
+import pandas as pd
+import qgrid
+import ipywidgets as widgets
+from IPython.display import display, clear_output
+
+# --- Sample DataFrame ---
+df = pd.DataFrame({
+    "Name": ["Alice", "Bob", "Charlie", "David", "Eve"],
+    "Age": [24, 30, 22, 29, 35],
+    "Country": ["US", "UK", "US", "DE", "FR"]
+})
+
+# --- Qgrid config ---
+qgrid_widget = qgrid.show_grid(df, show_toolbar=True, grid_options={'editable': False, 'filterable': True, 'sortable': True, 'highlightSelectedCell': True, 'rowSelection': 'multiple'})
+
+# --- Filename input ---
+filename_input = widgets.Text(
+    value='selected_rows.csv',
+    placeholder='Enter filename...',
+    description='Filename:',
+    layout=widgets.Layout(width='50%')
+)
+
+# --- Save Button ---
+save_button = widgets.Button(description="Save Selected", button_style='success')
+
+# --- Output widget ---
+output = widgets.Output()
+
+# --- Save Logic ---
+def save_selected_rows(b):
+    with output:
+        clear_output()
+        selected_df = qgrid_widget.get_selected_df()
+        if selected_df.empty:
+            print("⚠️ No rows selected.")
+        else:
+            file_name = filename_input.value.strip()
+            if not file_name.endswith('.csv'):
+                file_name += '.csv'
+            selected_df.to_csv(file_name, index=False)
+            print(f"✅ Saved {len(selected_df)} rows to '{file_name}'.")
+
+save_button.on_click(save_selected_rows)
+
+# --- Display ---
+display(qgrid_widget, filename_input, save_button, output)
