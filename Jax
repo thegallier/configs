@@ -1,4 +1,21 @@
+def make_sliding_regression_fn(t1, t2):
+    @jax.jit
+    def _sliding(X, Y):
+        n_samples = X.shape[0]
+        n_windows = (n_samples - t1) // t2 + 1
+        starts = jnp.arange(n_windows) * t2
 
+        def extract_window(data, start):
+            return jax.lax.dynamic_slice(data, (start, 0), (t1, data.shape[1]))
+
+        X_wins = jax.vmap(lambda s: extract_window(X, s))(starts)
+        Y_wins = jax.vmap(lambda s: extract_window(Y, s))(starts)
+
+        return jax.vmap(ols_kernel)(X_wins, Y_wins)
+
+    return _sliding
+
+---
 -import jax
 import jax.numpy as jnp
 from jax.scipy.linalg import solve
