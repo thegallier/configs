@@ -1,3 +1,48 @@
+
+-import jax
+import jax.numpy as jnp
+from jax.scipy.linalg import solve
+import time
+
+jax.config.update("jax_enable_x64", False)
+
+@jax.jit
+def ols_kernel(X_win, Y_win):
+    XtX = jnp.einsum('ni,nj->ij', X_win, X_win)
+    XtY = jnp.einsum('ni,nj->ij', X_win, Y_win)
+    return solve(XtX, XtY, sym_pos=True)
+
+@jax.jit
+def fast_sliding_regression(X, Y, t1, t2):
+    n_samples = X.shape[0]
+    n_windows = (n_samples - t1) // t2 + 1
+    starts = jnp.arange(n_windows) * t2  # shape: (n_windows,)
+
+    def extract_window(data, start):
+        return jax.lax.dynamic_slice(data, (start, 0), (t1, data.shape[1]))
+
+    # vectorized window extract with static sizes
+    X_wins = jax.vmap(lambda s: extract_window(X, s))(starts)  # (n_windows, t1, d)
+    Y_wins = jax.vmap(lambda s: extract_window(Y, s))(starts)  # (n_windows, t1, m)
+
+    return jax.vmap(ols_kernel)(X_wins, Y_wins)                # (n_windows, d, m)
+
+# === Example Usage ===
+if __name__ == "__main__":
+    key1, key2 = jax.random.split(jax.random.PRNGKey(0))
+    X = jax.random.normal(key1, (5000, 50))  # (samples, features)
+    Y = jax.random.normal(key2, (5000, 10))  # (samples, targets)
+
+    t1, t2 = 200, 50
+
+    # Warm-up compile
+    fast_sliding_regression(X, Y, t1, t2).block_until_ready()
+
+    # Timed run
+    start = time.time()
+    W = fast_sliding_regression(X, Y, t1, t2).block_until_ready()
+    print(f"Elapsed time: {time.time() - start:.4f} seconds")
+----
 # fast_sliding_ols.py
 
 import jax
