@@ -1,0 +1,43 @@
+# fast_sliding_ols.py
+
+import jax
+import jax.numpy as jnp
+from jax.scipy.linalg import solve
+import time
+
+# Use 32-bit floats unless you need high precision
+jax.config.update("jax_enable_x64", False)
+
+# JIT-compiled OLS regression on one window
+@jax.jit
+def ols_kernel(X_win, Y_win):
+    XtX = jnp.einsum('ni,nj->ij', X_win, X_win)
+    XtY = jnp.einsum('ni,nj->ij', X_win, Y_win)
+    return solve(XtX, XtY, sym_pos=True)
+
+# Accelerated sliding window regression
+@jax.jit
+def fast_sliding_regression(X, Y, t1, t2):
+    starts = jnp.arange(0, X.shape[0] - t1 + 1, t2)
+
+    def get_window(data, start):
+        return data[start:start + t1]
+
+    X_wins = jax.vmap(lambda i: get_window(X, i))(starts)
+    Y_wins = jax.vmap(lambda i: get_window(Y, i))(starts)
+
+    return jax.vmap(ols_kernel)(X_wins, Y_wins)
+
+# === Example Usage ===
+if __name__ == "__main__":
+    key1, key2 = jax.random.split(jax.random.PRNGKey(0))
+    X = jax.random.normal(key1, (5000, 50))
+    Y = jax.random.normal(key2, (5000, 10))
+
+    # Warm-up JIT
+    fast_sliding_regression(X, Y, t1=200, t2=50).block_until_ready()
+
+    # Timed run
+    start = time.time()
+    W = fast_sliding_regression(X, Y, t1=200, t2=50).block_until_ready()
+    print(f"Elapsed time: {time.time() - start:.4f} seconds")
