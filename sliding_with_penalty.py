@@ -40,13 +40,12 @@ def make_sliding_regression_with_penalty_fn(t1, t2, epsilon=1e-3, big_penalty=1e
 
 import jax
 import jax.numpy as jnp
-from jax.scipy.linalg import solve
 
 @jax.jit
 def ols_kernel(X_win, Y_win):
-    XtX = jnp.einsum('ni,nj->ij', X_win, X_win)
-    XtY = jnp.einsum('ni,nj->ij', X_win, Y_win)
-    return solve(XtX, XtY, sym_pos=True)
+    XtX = jnp.einsum('ni,nj->ij', X_win, X_win)  # (7,7)
+    XtY = jnp.einsum('ni,nj->ij', X_win, Y_win)  # (7,n_outputs)
+    return jnp.linalg.solve(XtX, XtY)            # (7,n_outputs)
 
 def make_sliding_regression_with_penalty_fn(
     t1, t2, epsilon=1e-3, big_penalty=1e6,
@@ -72,18 +71,19 @@ def make_sliding_regression_with_penalty_fn(
         # First OLS pass
         W_ols = jax.vmap(ols_kernel)(X_wins, Y_wins)  # (n_windows, 7, n_outputs)
 
+        # Build penalty mask
         if group_by_country:
             W_reshaped = W_ols.reshape((n_windows, 7, n_countries, n_tenors))
             abs_W = jnp.abs(W_reshaped)
 
             if group_trigger_mode == "mean":
                 group_stat = jnp.mean(abs_W, axis=3)
-                group_mask = group_stat < epsilon if jnp.ndim(epsilon) == 0 else group_stat < epsilon[None, None, :]
+                group_mask = group_stat < epsilon
                 group_mask_broadcast = jnp.repeat(group_mask[..., None], n_tenors, axis=3)
 
             elif group_trigger_mode == "median":
                 group_stat = jnp.median(abs_W, axis=3)
-                group_mask = group_stat < epsilon if jnp.ndim(epsilon) == 0 else group_stat < epsilon[None, None, :]
+                group_mask = group_stat < epsilon
                 group_mask_broadcast = jnp.repeat(group_mask[..., None], n_tenors, axis=3)
 
             elif group_trigger_mode == "forced":
@@ -95,51 +95,54 @@ def make_sliding_regression_with_penalty_fn(
             elif group_trigger_mode == "top_n":
                 if top_n_per_country is None:
                     raise ValueError("top_n_per_country must be provided for 'top_n' mode")
-                sorted_idx = jnp.argsort(abs_W, axis=3)  # sort over tenors
+                sorted_idx = jnp.argsort(abs_W, axis=3)
                 n_drop = n_tenors - top_n_per_country
                 drop_idx = sorted_idx[..., :n_drop]
 
-                # Initialize all True (keep)
                 keep_mask = jnp.ones_like(abs_W, dtype=bool)
 
-                # Mark drops as False
                 def mark_drops(keep_c, drop_c):
                     return keep_c.at[drop_c].set(False)
 
-                keep_mask = jax.vmap(  # over windows
-                    lambda keep_w, drop_w: jax.vmap(  # over features
-                        lambda keep_f, drop_f: jax.vmap(  # over countries
-                            mark_drops,
-                            in_axes=(0, 0)
+                keep_mask = jax.vmap(
+                    lambda keep_w, drop_w: jax.vmap(
+                        lambda keep_f, drop_f: jax.vmap(
+                            mark_drops, in_axes=(0, 0)
                         )(keep_f, drop_f),
                         in_axes=(0, 0)
                     )(keep_w, drop_w),
                     in_axes=(0, 0)
                 )(keep_mask, drop_idx)
 
-                group_mask_broadcast = ~keep_mask  # penalize where False
+                group_mask_broadcast = ~keep_mask
 
             else:
-                raise ValueError("group_trigger_mode must be 'mean', 'median', 'forced', or 'top_n'")
+                raise ValueError("Invalid group_trigger_mode")
 
             penalty_mask = jnp.where(group_mask_broadcast, big_penalty, 0.0).reshape((n_windows, 7, n_countries * n_tenors))
 
         else:
-            threshold = jnp.abs(W_ols) < epsilon if jnp.ndim(epsilon) == 0 else jnp.abs(W_ols) < epsilon[None, None, :]
+            threshold = jnp.abs(W_ols) < epsilon
             penalty_mask = jnp.where(threshold, big_penalty, 0.0)
 
-        def penalized_ols(X_win, Y_win, penalty_vec):
-            XtX = jnp.einsum('ni,nj->ij', X_win, X_win)
-            XtY = jnp.einsum('ni,nj->ij', X_win, Y_win)
-            penalty_diag = jnp.mean(penalty_vec, axis=1)
-            XtX_penalized = XtX + jnp.diag(penalty_diag)
-            return solve(XtX_penalized, XtY, sym_pos=True)
+        # Second penalized OLS pass (per-output penalties)
+        def penalized_ols(X_win, Y_win, penalty_mat):
+            XtX = jnp.einsum('ni,nj->ij', X_win, X_win)  # (7,7)
+            XtY = jnp.einsum('ni,nj->ij', X_win, Y_win)  # (7,n_outputs)
+
+            def solve_per_output(XtY_col, penalties_col):
+                XtX_penalized = XtX + jnp.diag(penalties_col)
+                return jnp.linalg.solve(XtX_penalized, XtY_col)  # (7,)
+
+            W_cols = jax.vmap(solve_per_output, in_axes=(1, 1))(XtY, penalty_mat)  # (n_outputs, 7)
+            return W_cols.T  # (7, n_outputs)
 
         W_penalized = jax.vmap(penalized_ols)(X_wins, Y_wins, penalty_mask)
 
         return W_ols, W_penalized
 
     return _sliding
+
 
 import jax
 import jax.numpy as jnp
@@ -160,7 +163,9 @@ big_penalty = 1e6
 key1, key2 = jax.random.split(jax.random.PRNGKey(0))
 X = jax.random.normal(key1, (n_samples, n_features))
 Y = jax.random.normal(key2, (n_samples, n_outputs)) * 0.1
-Y = Y.at[:, :5].set(Y[:, :5] + X[:, [0]] * 5)  # add strong signals
+
+# Add strong signal for testing (feature 0 → first 5 outputs)
+Y = Y.at[:, :5].set(Y[:, :5] + X[:, [0]] * 5)
 
 # --- Get function ---
 regression_fn = make_sliding_regression_with_penalty_fn(
@@ -189,7 +194,7 @@ for i in range(n_features):
         ols_vals = W_ols_reshaped[window_idx, i, c, :]
         pen_vals = W_pen_reshaped[window_idx, i, c, :]
         n_kept = jnp.sum(jnp.abs(pen_vals) > 1e-6)
-        print(f"Feature {i}, Country {c}: kept {n_kept}/{n_tenors} coefficients (expected {top_n_per_country})")
+        print(f"Feature {i}, Country {c}: kept {n_kept}/{n_tenors} (expected {top_n_per_country})")
 
 # Example raw weights
 print("\nExample raw weights (feature 0, country 0):")
