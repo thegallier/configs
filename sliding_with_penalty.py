@@ -1,43 +1,3 @@
-def make_sliding_regression_with_penalty_fn(t1, t2, epsilon=1e-3, big_penalty=1e6):
-    @jax.jit
-    def _sliding(X, Y):
-        n_samples = X.shape[0]
-        n_windows = (n_samples - t1) // t2 + 1
-        starts = jnp.arange(n_windows) * t2
-
-        def extract_window(data, start):
-            return jax.lax.dynamic_slice(data, (start, 0), (t1, data.shape[1]))
-
-        X_wins = jax.vmap(lambda s: extract_window(X, s))(starts)
-        Y_wins = jax.vmap(lambda s: extract_window(Y, s))(starts)
-
-        # === First OLS pass ===
-        W_ols = jax.vmap(ols_kernel)(X_wins, Y_wins)
-
-        # === Build penalty mask ===
-        penalty_mask = jnp.where(jnp.abs(W_ols) < epsilon, big_penalty, 0.0)  # (n_windows, d, m)
-
-        # === Second penalized OLS pass ===
-        def penalized_ols(X_win, Y_win, penalty_vec):
-            XtX = jnp.einsum('ni,nj->ij', X_win, X_win)
-            XtY = jnp.einsum('ni,nj->ij', X_win, Y_win)
-
-            # Apply penalty only on diagonal, averaged across targets
-            penalty_diag = jnp.mean(penalty_vec, axis=1)  # (d,)
-            XtX = XtX + jnp.diag(penalty_diag)
-
-            return solve(XtX, XtY, sym_pos=True)
-
-        W_penalized = jax.vmap(penalized_ols)(X_wins, Y_wins, penalty_mask)
-
-        return W_penalized
-
-    return _sliding
-
-
-
-/====
-
 import jax
 import jax.numpy as jnp
 
@@ -143,7 +103,6 @@ def make_sliding_regression_with_penalty_fn(
 
     return _sliding
 
-
 import jax
 import jax.numpy as jnp
 
@@ -178,25 +137,3 @@ regression_fn = make_sliding_regression_with_penalty_fn(
     group_trigger_mode="top_n",
     top_n_per_country=top_n_per_country
 )
-
-# --- Run ---
-W_ols, W_penalized = regression_fn(X, Y)
-
-# --- Inspect ---
-n_windows = W_ols.shape[0]
-W_ols_reshaped = W_ols.reshape((n_windows, n_features, n_countries, n_tenors))
-W_pen_reshaped = W_penalized.reshape((n_windows, n_features, n_countries, n_tenors))
-
-window_idx = 0
-print(f"\n=== Window {window_idx} Report ===")
-for i in range(n_features):
-    for c in range(n_countries):
-        ols_vals = W_ols_reshaped[window_idx, i, c, :]
-        pen_vals = W_pen_reshaped[window_idx, i, c, :]
-        n_kept = jnp.sum(jnp.abs(pen_vals) > 1e-6)
-        print(f"Feature {i}, Country {c}: kept {n_kept}/{n_tenors} (expected {top_n_per_country})")
-
-# Example raw weights
-print("\nExample raw weights (feature 0, country 0):")
-print("OLS:", W_ols_reshaped[window_idx, 0, 0, :])
-print("PEN:", W_pen_reshaped[window_idx, 0, 0, :])
