@@ -258,7 +258,6 @@ for i in range(n_features):
         print(f"Feature {i}, Country {c}: kept {n_kept}/{n_tenors} (expected {top_n_per_country})")
 
 /=====
-
 import jax
 import jax.numpy as jnp
 
@@ -308,11 +307,11 @@ def make_sliding_regression_with_penalty_fn(
             elif group_trigger_mode == "forced":
                 if forced_group_mask is None:
                     raise ValueError("forced_group_mask must be provided when using 'forced'")
-                if forced_group_mask.shape != (n_countries, n_tenors):
-                    raise ValueError(f"forced_group_mask must have shape ({n_countries}, {n_tenors})")
+                if forced_group_mask.shape != (n_countries, n_tenors, 7):
+                    raise ValueError(f"forced_group_mask must have shape ({n_countries}, {n_tenors}, 7)")
                 group_mask_broadcast = jnp.broadcast_to(
-                    forced_group_mask[None, None, :, :], (n_windows, 7, n_countries, n_tenors)
-                )
+                    forced_group_mask[None, :, :, :], (n_windows, n_countries, n_tenors, 7)
+                ).transpose(0, 3, 1, 2)  # (n_windows, 7, n_countries, n_tenors)
 
             elif group_trigger_mode == "top_n":
                 if top_n_per_country is None:
@@ -364,6 +363,7 @@ def make_sliding_regression_with_penalty_fn(
 
     return _sliding
 
+
 import jax
 import jax.numpy as jnp
 
@@ -383,13 +383,13 @@ key1, key2 = jax.random.split(jax.random.PRNGKey(0))
 X = jax.random.normal(key1, (n_samples, n_features))
 Y = jax.random.normal(key2, (n_samples, n_outputs)) * 0.1
 
-# Add strong signal to first country-tenor block (first 5 outputs)
+# Add strong signal for testing (feature 0 → first 5 outputs)
 Y = Y.at[:, :5].set(Y[:, :5] + X[:, [0]] * 5)
 
-# --- Create forced group mask (n_countries, n_tenors) ---
-forced_group_mask = jnp.zeros((n_countries, n_tenors), dtype=bool)
-forced_group_mask = forced_group_mask.at[0, 0].set(True)  # Penalize country 0, tenor 0
-forced_group_mask = forced_group_mask.at[1, 5].set(True)  # Penalize country 1, tenor 5
+# --- Create forced group mask (n_countries, n_tenors, 7) ---
+forced_group_mask = jnp.zeros((n_countries, n_tenors, 7), dtype=bool)
+forced_group_mask = forced_group_mask.at[0, 0, 0].set(True)  # Penalize hedge 0, country 0, tenor 0
+forced_group_mask = forced_group_mask.at[1, 5, 3].set(True)  # Penalize hedge 3, country 1, tenor 5
 
 # --- Get function ---
 regression_fn = make_sliding_regression_with_penalty_fn(
@@ -419,15 +419,12 @@ for i in range(n_features):
             ols_val = W_ols_reshaped[window_idx, i, c, t]
             pen_val = W_pen_reshaped[window_idx, i, c, t]
             changed = jnp.abs(ols_val - pen_val) > 1e-6
-            if changed:
-                print(f"Feature {i}, Country {c}, Tenor {t}: PENALIZED")
+            if forced_group_mask[c, t, i]:
+                status = "PENALIZED" if changed else "!!! ERROR: NOT PENALIZED"
             else:
-                print(f"Feature {i}, Country {c}, Tenor {t}: kept")
+                status = "kept" if not changed else "!!! WARNING: CHANGED"
+            print(f"Feature {i}, Country {c}, Tenor {t}: {status}")
 
-# Example raw weights
-print("\nExample raw weights (feature 0, country 0):")
-print("OLS:", W_ols_reshaped[window_idx, 0, 0, :])
-print("PEN:", W_pen_reshaped[window_idx, 0, 0, :])
 # Example raw weights
 print("\nExample raw weights (feature 0, country 0):")
 print("OLS:", W_ols_reshaped[window_idx, 0, 0, :])
