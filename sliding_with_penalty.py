@@ -45,7 +45,7 @@ def make_sliding_regression_with_penalty_fn(
                 ).transpose(0, 3, 1, 2)  # (n_windows, 7, n_countries, n_tenors)
 
             else:
-                raise ValueError("This example only sets up 'forced' mode for simplicity.")
+                raise ValueError("This setup only covers 'forced' mode for simplicity.")
 
             penalty_mask = jnp.where(group_mask_broadcast, big_penalty, 0.0).reshape((n_windows, 7, n_countries * n_tenors))
 
@@ -66,14 +66,26 @@ def make_sliding_regression_with_penalty_fn(
 
         W_penalized = jax.vmap(penalized_ols)(X_wins, Y_wins, penalty_mask)
 
-        if freeze_non_masked:
-            final_W = jnp.where(penalty_mask > 0, W_penalized, W_ols)
-            return W_ols, final_W
-        else:
-            return W_ols, W_penalized
+        W_final = jnp.where(penalty_mask > 0, W_penalized, W_ols) if freeze_non_masked else W_penalized
+
+        # === Compute R² helper ===
+        def compute_r2(X_w, Y_w, W):
+            Y_pred = jnp.einsum('wij,wjk->wik', X_w, W)  # (n_windows, t1, n_outputs)
+            resid_sq = jnp.sum((Y_w - Y_pred) ** 2, axis=1)
+            y_mean = jnp.mean(Y_w, axis=1, keepdims=True)
+            total_sq = jnp.sum((Y_w - y_mean) ** 2, axis=1)
+            return 1.0 - resid_sq / total_sq  # (n_windows, n_outputs)
+
+        r2_ols = compute_r2(X_wins, Y_wins, W_ols)
+        r2_final = compute_r2(X_wins, Y_wins, W_final)
+
+        # Reduce over windows
+        r2_ols_mean = jnp.mean(r2_ols, axis=0)      # (n_outputs,)
+        r2_final_mean = jnp.mean(r2_final, axis=0)  # (n_outputs,)
+
+        return W_ols, W_final, r2_ols_mean, r2_final_mean
 
     return _sliding
-
 
 # Labels
 country_labels = ['US', 'DE', 'FR', 'UK', 'JP']
